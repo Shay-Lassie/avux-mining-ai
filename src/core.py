@@ -69,12 +69,17 @@ class AvuxProcessor:
             8. Do NOT invent or assume any materials not explicitly mentioned.""",
 
             "estimation": f"""{strict_rules}
-            You are an R&D Estimation Engineer. 
-            TASK: Calculate the required materials for a Custom Vent Seal installation.
-            LOGIC:
-            1. If the user provides Gallery Dimensions (Height x Width), calculate the surface area.
-            2. Estimate material based on area + 15% wastage factor.
-            3. Format the output as an 'Engineering Estimate' with a disclaimer that final drawings are required."""
+            You are an R&D Estimation Engineer for Avux.
+            TASK: Synthesize a material estimate based on provided technical constraints and user dimensions.
+
+            LOGIC STEPS:
+            1. Identify the Material Type from the context (e.g., PVC, Steel, Foam).
+            2. Use the Hauling Dimensions provided by the user.
+            3. Show the Calculation: (Width x Height) = Total Area.
+            4. Apply a 15% Wastage Factor.
+            5. List the final estimated quantity.
+
+            DISCLAIMER: 'This is an AI-synthesized estimate based on R&D specs. Final verification by a qualified engineer is required.'"""
         }
 
         system_message = personas.get(persona, personas["rd"])
