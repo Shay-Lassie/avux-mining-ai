@@ -66,7 +66,15 @@ class AvuxProcessor:
                |----------|---------------|----------|-------|
             6. If quantity is not explicitly stated: Mark as 'TBD - Refer to Drawing'
             7. If specification is incomplete: Mark as 'See document section X' (if location is mentioned)
-            8. Do NOT invent or assume any materials not explicitly mentioned."""
+            8. Do NOT invent or assume any materials not explicitly mentioned.""",
+
+            "estimation": f"""{strict_rules}
+            You are an R&D Estimation Engineer. 
+            TASK: Calculate the required materials for a Custom Vent Seal installation.
+            LOGIC:
+            1. If the user provides Gallery Dimensions (Height x Width), calculate the surface area.
+            2. Estimate material based on area + 15% wastage factor.
+            3. Format the output as an 'Engineering Estimate' with a disclaimer that final drawings are required."""
         }
 
         system_message = personas.get(persona, personas["rd"])
@@ -105,8 +113,14 @@ if __name__ == "__main__":
         print(f"--- Avux Initialized: Loading {PDF_PATH} ---")
         print(f"--- Temperature set to: 0.0 (Deterministic Mode) ---")
         raw_signal = avux.extract_text_from_pdf(PDF_PATH)
-        
-        # Your specific question
+
+        #estimation question
+        user_query = "The client hauling is 3.5m high and 8m wide. Estimate the PVC material required for one seal."
+
+        response = avux.get_departmental_insight(raw_signal, user_query, "estimation")
+        print(response)
+
+        # rd question
         user_query = "What materials are required to produce this seal?"
         
         # Test Case: Procurement/Manufacturing Perspective
