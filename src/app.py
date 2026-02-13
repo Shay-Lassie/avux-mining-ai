@@ -106,6 +106,27 @@ if main_doc:
                 res = avux.get_departmental_insight(main_text, query, persona)
                 st.write(res)
 
+        elif persona == "finance":
+            st.subheader("🏦 Financial Extraction & Database Sync")
+        
+        if st.button("Extract & Preview Ledger Data"):
+            with st.spinner("Analyzing signal..."):
+                # First, try standard text extraction
+                records = avux.extract_structured_data(main_text)
+                
+                # If text extraction fails (Scanned PDF), try Vision Mode
+                if not records or len(main_text.strip()) < 10:
+                    st.info("No text detected. Switching to Vision Analysis (Scanned PDF Mode)...")
+                    # We need to save the uploaded file temporarily to pass to pdf2image
+                    with open("temp_scan.pdf", "wb") as f:
+                        f.write(main_doc.getbuffer())
+                    records = avux.extract_data_from_scan("temp_scan.pdf")
+                
+                if isinstance(records, list):
+                    st.session_state['preview_data'] = records
+                    st.success("Extraction Complete.")
+                else:
+                    st.error(f"Extraction failed: {records}")
     # ==========================================
     # CASE 3: STANDARD ANALYSIS (Research, Marketing, Procurement)
     # ==========================================

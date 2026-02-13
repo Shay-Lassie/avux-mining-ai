@@ -4,6 +4,9 @@ from pypdf import PdfReader
 from groq import Groq
 from supabase import create_client, Client
 import json
+import base64
+from io import BytesIO
+from pdf2image import convert_from_path
 
 load_dotenv()
 
@@ -35,6 +38,47 @@ class AvuxProcessor:
             return text
         except Exception as e:
             return f"Signal Error: {str(e)}"
+         
+    def extract_data_from_scan(self, pdf_path):
+        """Converts scanned PDF to images and uses Vision AI to extract JSON."""
+        try:
+            # 1. Convert first page of PDF to Image
+            images = convert_from_path(pdf_path)
+            img = images[0] # Focus on the first page for now
+            
+            # 2. Encode image to Base64 (Standard format for transmitting images)
+            buffered = BytesIO()
+            img.save(buffered, format="JPEG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            
+            # 3. Use Llama-3.2-Vision on Groq
+            prompt = """
+            Analyze this image of a delivery log. 
+            Extract the data into a JSON LIST of objects.
+            Format: [{"customer": "Name", "seal_type": "Type", "status": "Status", "sqm_delivered": 0.0, "delivery_note": "ID"}]
+            Return ONLY the JSON.
+            """
+            
+            completion = self.client.chat.completions.create(
+                model="llama-3.2-11b-vision-preview", # THE VISION MODEL
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}
+                            }
+                        ]
+                    }
+                ],
+                temperature=0.0
+            )
+            
+            return json.loads(completion.choices[0].message.content)
+        except Exception as e:
+            return f"Vision Error: {str(e)}"
 
     def get_departmental_insight(self, product_data, question, persona):
         # STRENGTHENED STRICT RULES: Added a 'Relevance Gate'
