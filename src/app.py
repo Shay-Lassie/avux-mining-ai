@@ -6,7 +6,7 @@ import os
 # Initialize Engine
 avux = AvuxProcessor()
 
-st.set_page_config(page_title="Avux Mining PA", layout="wide", page_icon="⚒️")
+st.set_page_config(page_title="Avux Smart Intranet", layout="wide", page_icon="⚒️")
 
 # --- CUSTOM CSS FOR INDUSTRIAL LOOK ---
 st.markdown("""
@@ -16,7 +16,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚒️ Avux: Research & Operations Ledger")
+st.title("⚒️ Avux: Smart Intranet & Operations Ledger")
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -26,6 +26,7 @@ with st.sidebar:
     st.divider()
     st.write("**Model:** Llama-3.3-70b")
     st.write("**Mode:** Deterministic (Temp 0.0)")
+    st.write("**Database:** Connected (Supabase)")
 
 # --- INPUT AREA ---
 col1, col2 = st.columns(2)
@@ -46,16 +47,16 @@ with col2:
 if main_doc:
     # Read primary text
     main_text = avux.extract_text_from_pdf(main_doc)
-    
     st.divider()
     
-    # CASE 1: Content Synthesis (Two Files)
+    # ==========================================
+    # CASE 1: CONTENT SYNTHESIS (Two Files)
+    # ==========================================
     if persona == "content":
         if ref_doc:
             ref_text = avux.extract_text_from_pdf(ref_doc)
             combined_context = f"TECHNICAL SPECS:\n{main_text}\n\nTEMPLATE:\n{ref_text}"
-            
-            prompt = st.text_area("Content Instructions:", placeholder="e.g. Generate a proposal for Zimplats using the template structure...")
+            prompt = st.text_area("Content Instructions:", placeholder="e.g. Generate a proposal...")
             if st.button("Synthesize Content"):
                 with st.spinner("Processing..."):
                     res = avux.get_departmental_insight(combined_context, prompt, "content")
@@ -63,7 +64,51 @@ if main_doc:
         else:
             st.warning("Please upload a Reference Template for synthesis.")
 
-    # CASE 2: Analysis (One File)
+    # ==========================================
+    # CASE 2: FINANCE & DATABASE LOGGING
+    # ==========================================
+    elif persona == "finance":
+        st.subheader("🏦 Financial Extraction & Database Sync")
+        
+        # Button to extract JSON data
+        if st.button("Extract & Preview Ledger Data"):
+            with st.spinner("Extracting structured records for Avux_Smart_Intranet..."):
+                # Calls the new extract function from core.py
+                records = avux.extract_structured_data(main_text)
+                
+                # Check if we got a valid list back
+                if isinstance(records, list) and len(records) > 0:
+                    # Save to Streamlit's "Holding Relay" (Session State)
+                    st.session_state['preview_data'] = records
+                    st.success("Extraction Complete. Review data below:")
+                else:
+                    st.error(f"Extraction failed. AI Output: {records}")
+        
+        # If data is held in the relay, show the table and Save button
+        if 'preview_data' in st.session_state:
+            df = pd.DataFrame(st.session_state['preview_data'])
+            st.dataframe(df)
+            
+            if st.button("✅ Confirm & Save to Database"):
+                with st.spinner("Transmitting to Supabase..."):
+                    msg = avux.save_to_ledger(st.session_state['preview_data'])
+                    if "Success" in msg:
+                        st.success(msg)
+                        del st.session_state['preview_data'] # Clear relay after saving
+                    else:
+                        st.error(msg)
+                        
+        st.divider()
+        st.subheader("Chat with Finance Ledger")
+        query = st.text_input("Ask the Finance Assistant a question about this document:")
+        if query:
+            with st.spinner("Analyzing..."):
+                res = avux.get_departmental_insight(main_text, query, persona)
+                st.write(res)
+
+    # ==========================================
+    # CASE 3: STANDARD ANALYSIS (Research, Marketing, Procurement)
+    # ==========================================
     else:
         query = st.text_input(f"Enter {persona.title()} Query:", placeholder="Ask a specific question...")
         if query:

@@ -11,8 +11,8 @@ class AvuxProcessor:
     def __init__(self):
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         # Initialize Supabase Client
-        url: str = os.getenv("https://mjhupvgxancirpudumzl.supabase.co/operations_ledger")
-        key: str = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpbmVwc2xvanp4YWh3cnRiamp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NDA0NzIsImV4cCI6MjA4NjIxNjQ3Mn0.OQpCLBGXCGTlthRiZkfFMvqmTFouGlfe8kZREBya-t0")
+        url: str = os.getenv("SUPABASE_URL")
+        key: str = os.getenv("SUPABASE_KEY")
         self.supabase: Client = create_client(url, key)
 
      # New Function to extract structured data specifically for the database
@@ -20,7 +20,7 @@ class AvuxProcessor:
         """Uses the AI to convert raw PDF text into a JSON object for the DB."""
         prompt = """
         Analyze the following delivery log and extract data into a JSON LIST. 
-        Format: [{"customer": "Name", "seal_type": "Type", "sqm_delivered": 00.0, "status": "Delivered", "delivery_note": "ID"}]
+        Format: [{"customer": "Name", "seal_type": "Type", "status": "Delivered", "sqm_delivered": 00.0, "delivery_note": "ID"}]
         STRICT: Only return the JSON list. No text. If data missing, use null.
         """
 
