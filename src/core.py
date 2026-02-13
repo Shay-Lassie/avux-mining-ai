@@ -2,13 +2,28 @@ import os
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from groq import Groq
+from supabase import create_client, Client
+import json
 
 load_dotenv()
 
 class AvuxProcessor:
     def __init__(self):
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        
+        # Initialize Supabase Client
+        url: str = os.getenv("https://mjhupvgxancirpudumzl.supabase.co/operations_ledger")
+        key: str = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpbmVwc2xvanp4YWh3cnRiamp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NDA0NzIsImV4cCI6MjA4NjIxNjQ3Mn0.OQpCLBGXCGTlthRiZkfFMvqmTFouGlfe8kZREBya-t0")
+        self.supabase: Client = create_client(url, key)
+
+     # New Function to extract structured data specifically for the database
+    def extract_structured_data(self, product_data):
+        """Uses the AI to convert raw PDF text into a JSON object for the DB."""
+        prompt = """
+        Analyze the following delivery log and extract data into a JSON LIST. 
+        Format: [{"customer": "Name", "seal_type": "Type", "sqm_delivered": 00.0, "status": "Delivered", "delivery_note": "ID"}]
+        STRICT: Only return the JSON list. No text. If data missing, use null.
+        """
+
     def extract_text_from_pdf(self, pdf_path):
         try:
             reader = PdfReader(pdf_path)
@@ -24,12 +39,12 @@ class AvuxProcessor:
     def get_departmental_insight(self, product_data, question, persona):
         # STRENGTHENED STRICT RULES: Added a 'Relevance Gate'
         strict_rules = """STRICT RULES:
-1. Focus ONLY on the specific persona's expertise.
-2. If the user question is nonsensical, irrelevant, or lacks engineering logic, respond ONLY with: 'Invalid Query: Please provide a specific technical or operational question.'
-3. Do NOT provide a general summary of the document unless explicitly asked for one.
-4. If the answer is not in the text, state: 'Information not found in document.'
-5. No filler text, no 'Here is your information', no polite transitions.
-6. Temperature is 0.0 - be deterministic."""
+        1. Focus ONLY on the specific persona's expertise.
+        2. If the user question is nonsensical, irrelevant, or lacks engineering logic, respond ONLY with: 'Invalid Query: Please provide a specific technical or operational question.'
+        3. Do NOT provide a general summary of the document unless explicitly asked for one.
+        4. If the answer is not in the text, state: 'Information not found in document.'
+        5. No filler text, no 'Here is your information', no polite transitions.
+        6. Temperature is 0.0 - be deterministic."""
 
         personas = {
             "research": f"""{strict_rules}
@@ -55,13 +70,28 @@ class AvuxProcessor:
         try:
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": f"CONTEXT:\n{product_data[:15000]}\n\nQUESTION: {question}"}
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": product_data[:10000]}
                 ],
-                model="llama-3.3-70b-versatile", 
-                temperature=0.0,
-                top_p=0.1,
+                model="llama-3.3-70b-versatile",
+                temperature=0.0
             )
-            return chat_completion.choices[0].message.content
+            # Parse the string into a real Python list
+            return json.loads(chat_completion.choices[0].message.content)
         except Exception as e:
-            return f"Model Error: {str(e)}"
+            return f"Parsing Error: {str(e)}"
+        
+    # New Function to SAVE to database
+    def save_to_ledger(self, data_list):
+        """Inserts the JSON list into the Supabase table."""
+        try:
+            response = self.supabase.table("operations_ledger").insert(data_list).execute()
+            return "Success: Data logged to Operational Ledger."
+        except Exception as e:
+            return f"Database Error: {str(e)}"
+
+    # New Function to READ from database
+    def get_ledger_history(self):
+        """Retrieves history from Supabase."""
+        response = self.supabase.table("operations_ledger").select("*").execute()
+        return response.data
