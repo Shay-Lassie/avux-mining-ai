@@ -58,7 +58,7 @@ class AvuxProcessor:
         return self._call_llm(prompt, text, model="llama-3.3-70b-versatile")
 
     def _extract_via_vision(self, pdf_path):
-        """Vision extraction for Scanned PDFs using Llama-3.2-Vision."""
+        """Vision extraction for Scanned PDFs using Llama-3.2-Vision replacement: meta llama."""
         # Convert PDF to Image (Requires Poppler)
         images = convert_from_path(pdf_path)
         img = images[0]
@@ -70,7 +70,7 @@ class AvuxProcessor:
         prompt = "Extract delivery data from this scan into a JSON LIST: customer, seal_type, status, sqm_delivered, delivery_note."
         
         completion = self.client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[{
                 "role": "user",
                 "content": [
