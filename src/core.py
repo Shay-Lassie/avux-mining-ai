@@ -1,141 +1,135 @@
 import os
-from dotenv import load_dotenv
-from pypdf import PdfReader
-from groq import Groq
-from supabase import create_client, Client
 import json
 import base64
 from io import BytesIO
+from dotenv import load_dotenv
+
+# Signal Processing Libraries
+from pypdf import PdfReader
 from pdf2image import convert_from_path
+
+# AI & Database Drivers
+from groq import Groq
+from supabase import create_client, Client
 
 load_dotenv()
 
 class AvuxProcessor:
+    """
+    AVUX CORE PROCESSOR
+    Functions as the Central Control Unit (CCU) for the platform.
+    """
     def __init__(self):
+        # Initialize Power & Comms
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        # Initialize Supabase Client
-        url: str = os.getenv("SUPABASE_URL")
-        key: str = os.getenv("SUPABASE_KEY")
+        
+        # Connect to Data Historian (Supabase)
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        if not url or not key:
+            raise ValueError("Supabase Credentials Missing")
         self.supabase: Client = create_client(url, key)
 
-     # New Function to extract structured data specifically for the database
-    def extract_structured_data(self, product_data):
-        """Uses the AI to convert raw PDF text into a JSON object for the DB."""
-        prompt = """
-        Analyze the following delivery log and extract data into a JSON LIST. 
-        Format: [{"customer": "Name", "seal_type": "Type", "status": "Delivered", "sqm_delivered": 00.0, "delivery_note": "ID"}]
-        STRICT: Only return the JSON list. No text. If data missing, use null.
+    # --- INPUT STAGE: Auto-Ranging Ingestion ---
+    
+    def ingest_document(self, pdf_path):
         """
-
-    def extract_text_from_pdf(self, pdf_path):
+        AUTO-RANGING INGESTOR:
+        Detects if signal is Digital (Text) or Analog (Scan) and processes accordingly.
+        """
+        text = ""
         try:
             reader = PdfReader(pdf_path)
-            text = ""
             for page in reader.pages:
                 content = page.extract_text()
-                if content:
-                    text += content
-            return text
-        except Exception as e:
-            return f"Signal Error: {str(e)}"
-         
-    def extract_data_from_scan(self, pdf_path):
-        """Converts scanned PDF to images and uses Vision AI to extract JSON."""
-        try:
-            # 1. Convert first page of PDF to Image
-            images = convert_from_path(pdf_path)
-            img = images[0] # Focus on the first page for now
-            
-            # 2. Encode image to Base64 (Standard format for transmitting images)
-            buffered = BytesIO()
-            img.save(buffered, format="JPEG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            
-            # 3. Use Llama-3.2-Vision on Groq
-            prompt = """
-            Analyze this image of a delivery log. 
-            Extract the data into a JSON LIST of objects.
-            Format: [{"customer": "Name", "seal_type": "Type", "status": "Status", "sqm_delivered": 0.0, "delivery_note": "ID"}]
-            Return ONLY the JSON.
-            """
-            
-            completion = self.client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview", # THE VISION MODEL
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}
-                            }
-                        ]
-                    }
-                ],
-                temperature=0.0
-            )
-            
-            return json.loads(completion.choices[0].message.content)
-        except Exception as e:
-            return f"Vision Error: {str(e)}"
+                if content: text += content
+        except Exception:
+            pass
 
-    def get_departmental_insight(self, product_data, question, persona):
-        # STRENGTHENED STRICT RULES: Added a 'Relevance Gate'
-        strict_rules = """STRICT RULES:
-        1. Focus ONLY on the specific persona's expertise.
-        2. If the user question is nonsensical, irrelevant, or lacks engineering logic, respond ONLY with: 'Invalid Query: Please provide a specific technical or operational question.'
-        3. Do NOT provide a general summary of the document unless explicitly asked for one.
-        4. If the answer is not in the text, state: 'Information not found in document.'
-        5. No filler text, no 'Here is your information', no polite transitions.
-        6. Temperature is 0.0 - be deterministic."""
+        # Threshold Gate: If less than 50 chars, switch to Vision Transducer
+        if len(text.strip()) < 50:
+            return self._extract_via_vision(pdf_path)
+        else:
+            return self._extract_via_text(text)
+
+    def _extract_via_text(self, text):
+        """Standard extraction for Digital PDFs."""
+        prompt = "Extract delivery data into a JSON LIST: [{'customer': 'Name', 'seal_type': 'Type', 'status': 'Status', 'sqm_delivered': 0.0, 'delivery_note': 'ID'}]"
+        return self._call_llm(prompt, text, model="llama-3.3-70b-versatile")
+
+    def _extract_via_vision(self, pdf_path):
+        """Vision extraction for Scanned PDFs using Llama-3.2-Vision."""
+        # Convert PDF to Image (Requires Poppler)
+        images = convert_from_path(pdf_path)
+        img = images[0]
+        
+        buffered = BytesIO()
+        img.save(buffered, format="JPEG")
+        img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        prompt = "Extract delivery data from this scan into a JSON LIST: customer, seal_type, status, sqm_delivered, delivery_note."
+        
+        completion = self.client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
+                ]
+            }],
+            temperature=0.0
+        )
+        return self._parse_json(completion.choices[0].message.content)
+
+    # --- PROCESSING STAGE: Persona Routing ---
+
+    def get_departmental_insight(self, context, question, persona):
+        """Logic Gate: Routes data through professional persona filters."""
+        
+        strict_rules = "STRICT: If query is irrelevant, return 'Invalid Query'. Temp 0.0. No rambling."
 
         personas = {
-            "research": f"""{strict_rules}
-            You are a Senior Research & Development Engineer. 
-            FOCUS: Engineering specs, material science, and safety tolerances. 
-            RESPONSE STYLE: Data-points only. Be extremely concise. If asked a vague question, do not describe the product; ask for clarification.""",
-            
-            "marketing": f"""{strict_rules}
-            You are a Product Marketing Manager. Focus on USP and benefits.""",
-            
-            "procurement": f"""{strict_rules}
-            You are a Procurement Specialist. Focus on BOM, quantities, and materials. Use tables.""",
-            
-            "finance": f"""{strict_rules}
-            You are an Operations Auditor. Track deliveries, sqm counts, and sign-offs from the provided logs.""",
-            
-            "content": f"""{strict_rules}
-            You are a Content Synthesis Engine. Merge the technical 'Signal' with the reference 'Structure' to create professional documents."""
+            "research": f"{strict_rules} You are a Senior R&D Engineer. Focus on material science and tolerances.",
+            "marketing": f"{strict_rules} You are a Marketing Lead. Focus on USPs and customer benefits.",
+            "procurement": f"{strict_rules} You are a BOM Specialist. Focus on materials and quantities.",
+            "finance": f"{strict_rules} You are an Auditor. Focus on sqm counts and delivery tracking.",
+            "content": f"{strict_rules} You are a Content Engine. Merge Technical Signal with Reference Template."
         }
 
-        system_message = personas.get(persona, personas["research"])
+        system_msg = personas.get(persona, personas["research"])
 
+        return self._call_llm(system_msg, f"CONTEXT: {context[:12000]}\n\nQUES: {question}", "llama-3.3-70b-versatile")
+
+    # --- OUTPUT STAGE: Database & Helpers ---
+
+    def _call_llm(self, system_prompt, user_content, model):
+        completion = self.client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            model=model,
+            temperature=0.0
+        )
+        # Check if we expect JSON (for ingestion) or text (for chat)
+        content = completion.choices[0].message.content
+        if "[" in content and "]" in content:
+            return self._parse_json(content)
+        return content
+
+    def _parse_json(self, content):
         try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": product_data[:10000]}
-                ],
-                model="llama-3.3-70b-versatile",
-                temperature=0.0
-            )
-            # Parse the string into a real Python list
-            return json.loads(chat_completion.choices[0].message.content)
-        except Exception as e:
-            return f"Parsing Error: {str(e)}"
-        
-    # New Function to SAVE to database
+            start = content.find("[")
+            end = content.rfind("]") + 1
+            return json.loads(content[start:end])
+        except:
+            return f"Error Parsing JSON: {content}"
+
     def save_to_ledger(self, data_list):
-        """Inserts the JSON list into the Supabase table."""
+        """Writes verified records to Avux_Smart_Intranet DB."""
         try:
-            response = self.supabase.table("operations_ledger").insert(data_list).execute()
-            return "Success: Data logged to Operational Ledger."
+            self.supabase.table("operations_ledger").insert(data_list).execute()
+            return "✅ Transmission Successful: Data logged to Supabase."
         except Exception as e:
-            return f"Database Error: {str(e)}"
-
-    # New Function to READ from database
-    def get_ledger_history(self):
-        """Retrieves history from Supabase."""
-        response = self.supabase.table("operations_ledger").select("*").execute()
-        return response.data
+            return f"❌ Bus Error: {str(e)}"
