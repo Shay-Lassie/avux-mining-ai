@@ -3,140 +3,85 @@ import pandas as pd
 from core import AvuxProcessor
 import os
 
-# Initialize Engine
+# 1. Boot System
 avux = AvuxProcessor()
 
 st.set_page_config(page_title="Avux Smart Intranet", layout="wide", page_icon="⚒️")
 
-# --- CUSTOM CSS FOR INDUSTRIAL LOOK ---
+# 2. UI Aesthetics (Industrial Blue Theme)
 st.markdown("""
     <style>
-    .main { background-color: #f5f5f5; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #007BFF; color: white; }
+    .stButton>button { width: 100%; background-color: #007BFF; color: white; border-radius: 5px; }
+    .main { background-color: #f8f9fa; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("⚒️ Avux: Smart Intranet & Operations Ledger")
 
-# --- SIDEBAR ---
+# 3. Sidebar Configuration
 with st.sidebar:
-    st.header("System Controls")
-    persona = st.selectbox("Select Active Persona", 
-                          ["research", "marketing", "procurement", "finance", "content"])
+    st.header("Control Panel")
+    persona = st.selectbox("Active Persona", ["research", "marketing", "procurement", "finance", "content"])
     st.divider()
-    st.write("**Model:** Llama-3.3-70b")
-    st.write("**Mode:** Deterministic (Temp 0.0)")
-    st.write("**Database:** Connected (Supabase)")
+    st.write("System: Online")
+    st.write("Database: Connected")
 
-# --- INPUT AREA ---
+# 4. Input Channels
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📡 Primary Signal")
-    main_doc = st.file_uploader("Upload Product Specs / Ledger PDF", type="pdf")
+    st.subheader("📡 Primary Signal (PDF)")
+    main_doc = st.file_uploader("Upload Specs or Ledger", type="pdf")
 
 with col2:
     st.subheader("📑 Reference Channel")
     if persona == "content":
-        ref_doc = st.file_uploader("Upload Template / Proposal Structure", type="pdf")
+        ref_doc = st.file_uploader("Upload Template Document", type="pdf")
     else:
-        st.info("Reference channel inactive for this persona.")
-        ref_doc = None
+        st.info("Reference channel inactive for current persona.")
 
-# --- EXECUTION LOGIC ---
+# 5. Operational Logic
 if main_doc:
-    # Read primary text
-    main_text = avux.extract_text_from_pdf(main_doc)
-    st.divider()
-    
-    # ==========================================
-    # CASE 1: CONTENT SYNTHESIS (Two Files)
-    # ==========================================
-    if persona == "content":
-        if ref_doc:
-            ref_text = avux.extract_text_from_pdf(ref_doc)
-            combined_context = f"TECHNICAL SPECS:\n{main_text}\n\nTEMPLATE:\n{ref_text}"
-            prompt = st.text_area("Content Instructions:", placeholder="e.g. Generate a proposal...")
-            if st.button("Synthesize Content"):
-                with st.spinner("Processing..."):
-                    res = avux.get_departmental_insight(combined_context, prompt, "content")
-                    st.markdown(res)
-        else:
-            st.warning("Please upload a Reference Template for synthesis.")
+    # Save temp file for Poppler to read if scan
+    with open("temp_input.pdf", "wb") as f:
+        f.write(main_doc.getbuffer())
 
-    # ==========================================
-    # CASE 2: FINANCE & DATABASE LOGGING
-    # ==========================================
-    elif persona == "finance":
-        st.subheader("🏦 Financial Extraction & Database Sync")
-        
-        # Button to extract JSON data
-        if st.button("Extract & Preview Ledger Data"):
-            with st.spinner("Extracting structured records for Avux_Smart_Intranet..."):
-                # Calls the new extract function from core.py
-                records = avux.extract_structured_data(main_text)
-                
-                # Check if we got a valid list back
-                if isinstance(records, list) and len(records) > 0:
-                    # Save to Streamlit's "Holding Relay" (Session State)
-                    st.session_state['preview_data'] = records
-                    st.success("Extraction Complete. Review data below:")
-                else:
-                    st.error(f"Extraction failed. AI Output: {records}")
-        
-        # If data is held in the relay, show the table and Save button
-        if 'preview_data' in st.session_state:
-            df = pd.DataFrame(st.session_state['preview_data'])
-            st.dataframe(df)
-            
-            if st.button("✅ Confirm & Save to Database"):
-                with st.spinner("Transmitting to Supabase..."):
-                    msg = avux.save_to_ledger(st.session_state['preview_data'])
-                    if "Success" in msg:
-                        st.success(msg)
-                        del st.session_state['preview_data'] # Clear relay after saving
-                    else:
-                        st.error(msg)
-                        
-        st.divider()
-        st.subheader("Chat with Finance Ledger")
-        query = st.text_input("Ask the Finance Assistant a question about this document:")
-        if query:
-            with st.spinner("Analyzing..."):
-                res = avux.get_departmental_insight(main_text, query, persona)
-                st.write(res)
-
-        elif persona == "finance":
-            st.subheader("🏦 Financial Extraction & Database Sync")
-        
-        if st.button("Extract & Preview Ledger Data"):
-            with st.spinner("Analyzing signal..."):
-                # First, try standard text extraction
-                records = avux.extract_structured_data(main_text)
-                
-                # If text extraction fails (Scanned PDF), try Vision Mode
-                if not records or len(main_text.strip()) < 10:
-                    st.info("No text detected. Switching to Vision Analysis (Scanned PDF Mode)...")
-                    # We need to save the uploaded file temporarily to pass to pdf2image
-                    with open("temp_scan.pdf", "wb") as f:
-                        f.write(main_doc.getbuffer())
-                    records = avux.extract_data_from_scan("temp_scan.pdf")
-                
+    # --- FINANCE WORKFLOW (DB Logging) ---
+    if persona == "finance":
+        if st.button("Extract Ledger Data"):
+            with st.spinner("Processing Signal..."):
+                records = avux.ingest_document("temp_input.pdf")
                 if isinstance(records, list):
-                    st.session_state['preview_data'] = records
+                    st.session_state['preview'] = records
                     st.success("Extraction Complete.")
                 else:
-                    st.error(f"Extraction failed: {records}")
-    # ==========================================
-    # CASE 3: STANDARD ANALYSIS (Research, Marketing, Procurement)
-    # ==========================================
+                    st.error(f"Signal Fault: {records}")
+
+        if 'preview' in st.session_state:
+            st.table(pd.DataFrame(st.session_state['preview']))
+            if st.button("✅ Commit to Supabase"):
+                status = avux.save_to_ledger(st.session_state['preview'])
+                st.info(status)
+                if "Success" in status: del st.session_state['preview']
+
+    # --- CONTENT WORKFLOW (Synthesis) ---
+    elif persona == "content" and ref_doc:
+        main_text = avux.extract_text_from_pdf(main_doc) # Helper needed or direct extract
+        ref_text = avux.extract_text_from_pdf(ref_doc)
+        
+        prompt = st.text_area("What should Avux generate?")
+        if st.button("Synthesize"):
+            res = avux.get_departmental_insight(f"SPECS: {main_text} TEMPLATE: {ref_text}", prompt, "content")
+            st.markdown(res)
+
+    # --- GENERAL RESEARCH/ANALYSIS WORKFLOW ---
     else:
-        query = st.text_input(f"Enter {persona.title()} Query:", placeholder="Ask a specific question...")
+        query = st.text_input(f"Inquiry for {persona.title()}:")
         if query:
-            with st.spinner("Analyzing..."):
-                res = avux.get_departmental_insight(main_text, query, persona)
-                st.markdown(f"### {persona.title()} Analysis")
-                st.write(res)
+            # We use extract_text here for simple RAG
+            raw_text = avux.extract_text_from_pdf(main_doc) 
+            res = avux.get_departmental_insight(raw_text, query, persona)
+            st.markdown(f"### {persona.title()} Analysis\n{res}")
 
 else:
-    st.info("Awaiting input signal. Please upload a document in the Primary Signal channel.")
+    st.info("Awaiting Input Signal...")
