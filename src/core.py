@@ -133,3 +133,25 @@ class AvuxProcessor:
             return "✅ Transmission Successful: Data logged to Supabase."
         except Exception as e:
             return f"❌ Bus Error: {str(e)}"
+        
+    def query_ledger_history(self, user_question):
+        """
+        DATABASE INQUIRY MODE:
+        Queries the Supabase Historian directly using Natural Language.
+        """
+        # 1. Fetch current data from Supabase (The 'Signal' from the Historian)
+        try:
+            response = self.supabase.table("operations_ledger").select("*").execute()
+            history_data = response.data
+        except Exception as e:
+            return f"Database Retrieval Fault: {str(e)}"
+
+        # 2. Feed the history to the AI to answer the question
+        prompt = f"""
+        You are the Avux Operations Auditor. 
+        You have access to the Historical Ledger provided in the context.
+        TASK: Answer the user's question based ONLY on the database records.
+        CONTEXT: {json.dumps(history_data)}
+        """
+        
+        return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")    

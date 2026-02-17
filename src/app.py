@@ -64,6 +64,24 @@ if main_doc:
                 st.info(status)
                 if "Success" in status: del st.session_state['preview']
 
+    elif persona == "finance":
+        st.subheader("🏦 Operations Ledger Control")
+        
+        tab1, tab2 = st.tabs(["📥 Ingest New Data", "📊 Query History"])
+        
+        with tab1:
+            if st.button("Extract & Preview Ledger Data"):
+                # ... (keep your existing ingestion logic here)
+                pass
+
+        with tab2:
+            st.info("Querying live data from Avux_Smart_Intranet")
+            hist_query = st.text_input("Ask a question about historical orders (e.g., 'What is the total sqm for Zimplats?'):")
+            if hist_query:
+                with st.spinner("Accessing Historian..."):
+                    answer = avux.query_ledger_history(hist_query)
+                    st.success(answer)
+
     # --- CONTENT WORKFLOW (Synthesis) ---
     elif persona == "content" and ref_doc:
         main_text = avux.extract_text_from_pdf(main_doc) # Helper needed or direct extract
