@@ -48,23 +48,6 @@ if main_doc:
 
     # --- FINANCE WORKFLOW (DB Logging) ---
     if persona == "finance":
-        if st.button("Extract Ledger Data"):
-            with st.spinner("Processing Signal..."):
-                records = avux.ingest_document("temp_input.pdf")
-                if isinstance(records, list):
-                    st.session_state['preview'] = records
-                    st.success("Extraction Complete.")
-                else:
-                    st.error(f"Signal Fault: {records}")
-
-        if 'preview' in st.session_state:
-            st.table(pd.DataFrame(st.session_state['preview']))
-            if st.button("✅ Commit to Supabase"):
-                status = avux.save_to_ledger(st.session_state['preview'])
-                st.info(status)
-                if "Success" in status: del st.session_state['preview']
-
-    elif persona == "finance":
         st.subheader("🏦 Operations Ledger Control")
         
         tab1, tab2 = st.tabs(["📥 Ingest New Data", "📊 Query History"])
