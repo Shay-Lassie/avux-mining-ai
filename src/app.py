@@ -63,20 +63,28 @@ if persona == "finance":
                         st.success("Signal Processed Successfully.")
                     else:
                         st.error(f"Extraction Error: {records}")
-
-            # Verification Stage (Holding Relay)
+         
+            # Verification Stage (The 'Set-Point Override')
             if 'finance_preview' in st.session_state:
-                st.write("### Data Preview (Verify before committing)")
-                df_preview = pd.DataFrame(st.session_state['finance_preview'])
-                st.table(df_preview)
+                st.write("### 📝 Verify & Edit Records")
+                st.info("The AI couldn't find some SQM values. Please enter them manually in the table below before saving.")
                 
-                if st.button("✅ Commit to Permanent Ledger"):
+                # Use data_editor instead of table/dataframe
+                edited_df = st.data_editor(
+                    pd.DataFrame(st.session_state['finance_preview']),
+                    num_rows="dynamic",
+                    key="ledger_editor"
+                )
+                
+                if st.button("✅ Commit Verified Data to Ledger"):
                     with st.spinner("Transmitting to Supabase..."):
-                        status = avux.save_to_ledger(st.session_state['finance_preview'])
+                        # We convert the edited dataframe back to a list of dicts
+                        verified_records = edited_df.to_dict('records')
+                        status = avux.save_to_ledger(verified_records)
                         st.success(status)
-                        # Clear memory after successful write
                         if "✅" in status:
                             del st.session_state['finance_preview']
+                            st.rerun() # Refresh to update the graph
 
     with tab_query:
         st.info("Mode: Direct Inquiry. Query the cloud database without a document.")
