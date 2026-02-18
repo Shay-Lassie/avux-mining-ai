@@ -180,4 +180,16 @@ class AvuxProcessor:
         3. Perform the calculation step-by-step.
         4. If a value is missing, state 'Insufficient Data to calculate'.
         """
-        return self._call_llm(prompt, math_problem, "llama-3.3-70b-versatile")    
+        return self._call_llm(prompt, math_problem, "llama-3.3-70b-versatile")  
+
+    def login(self, email, password):
+        """Authenticates the user and sets the session badge."""
+        try:
+            res = self.supabase.auth.sign_in_with_password({"email": email, "password": password})
+            return res
+        except Exception as e:
+            return f"Auth Error: {str(e)}"
+
+    def get_user(self):
+        """Checks who is currently logged in."""
+        return self.supabase.auth.get_user()  
