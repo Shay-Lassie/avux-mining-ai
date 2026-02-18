@@ -85,6 +85,31 @@ if persona == "finance":
             with st.spinner("Accessing Database Historian..."):
                 answer = avux.query_ledger_history(h_query)
                 st.markdown(f"**Avux Financial Analysis:**\n\n{answer}")
+            with tab_query:
+                st.info("Mode: Direct Inquiry & Analytics")
+        
+                # 1. NEW FEATURE: Live Analytics Dashboard
+                if st.checkbox("📈 Show Live Operations Dashboard"):
+                    with st.spinner("Fetching DB metrics..."):
+                        history = avux.get_ledger_history() # You'll need to add this to core.py
+                        if history:
+                            df_all = pd.DataFrame(history)
+                            
+                            # Create the Chart Metrics
+                            metrics = df_all.groupby('status')['sqm_delivered'].sum().reset_index()
+                            
+                            col_a, col_b = st.columns(2)
+                            with col_a:
+                                st.metric("Total Sqm Delivered (Global)", f"{df_all['sqm_delivered'].sum():,.2f}")
+                                st.dataframe(metrics)
+                            with col_b:
+                                # Recreating the chart from your image
+                                st.bar_chart(data=metrics, x='status', y='sqm_delivered')
+                
+                # 2. Keep your existing NL2SQL query below the dashboard
+                st.divider()
+                h_query = st.text_input("Ask a specific question about historical data:")
+                # ... (rest of your query logic)
 
 # ==========================================
 # BRANCH B: CONTENT SYNTHESIS (Dual-Channel Input)
