@@ -154,4 +154,22 @@ class AvuxProcessor:
         CONTEXT: {json.dumps(history_data)}
         """
         
-        return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")    
+        return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")
+    
+    def calculate_engineering_logic(self, context, math_problem):
+        """
+        Calculates complex engineering formulas by forcing the AI 
+        to show its 'Workings' and verified math.
+        """
+        prompt = f"""
+        You are an Avux R&D Calculation Agent.
+        CONTEXT: {context[:5000]}
+        TASK: Solve the user's engineering problem.
+        
+        STRICT RULES:
+        1. State the Formula used (e.g., Atkinson's Law for ventilation).
+        2. Identify the Variables from the context or user input.
+        3. Perform the calculation step-by-step.
+        4. If a value is missing, state 'Insufficient Data to calculate'.
+        """
+        return self._call_llm(prompt, math_problem, "llama-3.3-70b-versatile")    
