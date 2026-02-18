@@ -156,6 +156,14 @@ class AvuxProcessor:
         
         return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")
     
+    def get_ledger_history(self):
+        """Fetches all rows from the historian for dashboarding."""
+        try:
+            response = self.supabase.table("operations_ledger").select("*").execute()
+            return response.data
+        except Exception as e:
+            return None
+
     def calculate_engineering_logic(self, context, math_problem):
         """
         Calculates complex engineering formulas by forcing the AI 
