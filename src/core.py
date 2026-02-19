@@ -200,4 +200,38 @@ class AvuxProcessor:
             res = self.supabase.auth.update_user({"password": new_password})
             return "✅ Password updated successfully."
         except Exception as e:
-            return f"❌ Update Failed: {str(e)}"  
+            return f"❌ Update Failed: {str(e)}"
+
+    def query_ledger_history(self, user_question):
+        """
+        HISTORIAN INQUIRY:
+        Queries the Supabase database and uses LLM to synthesize an answer.
+        """
+        try:
+            # 1. Fetch the 'Historian' data (All rows)
+            # This is like pulling the CSV from a PLC log
+            response = self.supabase.table("operations_ledger").select("*").execute()
+            history_data = response.data
+            
+            if not history_data:
+                return "Historian is empty. No data recorded yet."
+
+            # 2. Feed the data to the LLM as 'Context'
+            prompt = f"""
+            You are the Avux Operations Auditor.
+            You are looking at the 'Avux_Smart_Intranet' ledger history.
+            
+            TASK: Answer the user's question based ONLY on the provided ledger data.
+            LEDGER DATA: {json.dumps(history_data)}
+            
+            STRICT RULES:
+            - Provide totals and summaries clearly.
+            - If asking about SQM, sum the 'sqm_delivered' values.
+            - If data is missing for a specific date, state it clearly.
+            - Tone: Industrial Audit report style.
+            """
+            
+            return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")
+            
+        except Exception as e:
+            return f"Database Retrieval Fault: {str(e)}"  
