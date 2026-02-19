@@ -56,7 +56,14 @@ with st.sidebar:
 if 'user' not in st.session_state:
     st.warning("🔒 SYSTEM LOCKED: Authentication Required.")
     st.stop() # This prevents the rest of the code from running
-    
+
+if 'user' in st.session_state:
+        with st.expander("👤 Account Settings"):
+            new_pw = st.text_input("New Password", type="password")
+            if st.button("Update Password"):
+                status = avux.update_password(new_pw)
+                st.info(status)
+                
 with st.sidebar:
     st.header("Navigation Hub")
     persona = st.selectbox("Active Persona", 
