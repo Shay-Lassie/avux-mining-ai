@@ -63,7 +63,7 @@ if 'user' in st.session_state:
             if st.button("Update Password"):
                 status = avux.update_password(new_pw)
                 st.info(status)
-                
+
 with st.sidebar:
     st.header("Navigation Hub")
     persona = st.selectbox("Active Persona", 
@@ -125,8 +125,21 @@ if persona == "finance":
                             st.rerun() # Refresh to update the graph
 
     with tab_query:
-        st.info("Mode: Direct Inquiry. Query the cloud database without a document.")
-        h_query = st.text_input("Ask a question about historical data:")
+        st.info("📊 Mode: Direct Inquiry (Avux_Smart_Intranet)")
+                
+        # The Question Box
+        hist_query = st.text_input("Ask the Historian a question:", 
+        placeholder="e.g., What is the total Sqm delivered for Zimplats?")
+                
+        if hist_query:
+            with st.spinner("Accessing Historian..."):
+                # Call the new function
+                answer = avux.query_ledger_history(hist_query)
+                st.success("**Avux Analysis:**")
+                st.markdown(answer)
+            st.info("Mode: Direct Inquiry. Query the cloud database without a document.")
+            h_query = st.text_input("Ask a question about historical data:")
+            
         if h_query:
             with st.spinner("Accessing Database Historian..."):
                 answer = avux.query_ledger_history(h_query)
