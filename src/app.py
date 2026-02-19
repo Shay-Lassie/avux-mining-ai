@@ -26,6 +26,37 @@ st.markdown("""
 st.title("⚒️ Avux: Research & Operations Ledger")
 
 # 3. SIDEBAR: NAVIGATION & CONTROL
+#AUTHENTICATED
+with st.sidebar:
+    st.header("🔐 Avux Secure Access")
+    
+    if 'user' not in st.session_state:
+        st.info("Please sign in to access R&D and Operations data.")
+        with st.form("login_form"):
+            email = st.text_input("Work Email / Username")
+            pw = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Sign In")
+            
+            if submit:
+                with st.spinner("Authenticating..."):
+                    res = avux.login(email, pw)
+                    if hasattr(res, 'user') and res.user:
+                        st.session_state['user'] = res.user
+                        st.success("Access Granted")
+                        st.rerun()
+                    else:
+                        st.error("Invalid Credentials or Unauthorized Access.")
+    else:
+        st.write(f"👷 **Operator:** {st.session_state['user'].email}")
+        if st.button("Sign Out"):
+            del st.session_state['user']
+            st.rerun()
+
+    # THE SECURITY INTERLOCK
+if 'user' not in st.session_state:
+    st.warning("🔒 SYSTEM LOCKED: Authentication Required.")
+    st.stop() # This prevents the rest of the code from running
+    
 with st.sidebar:
     st.header("Navigation Hub")
     persona = st.selectbox("Active Persona", 

@@ -192,4 +192,12 @@ class AvuxProcessor:
 
     def get_user(self):
         """Checks who is currently logged in."""
-        return self.supabase.auth.get_user()  
+        return self.supabase.auth.get_user()
+
+    def update_password(self, new_password):
+        """Allows a logged-in user to update their password without an email link."""
+        try:
+            res = self.supabase.auth.update_user({"password": new_password})
+            return "✅ Password updated successfully."
+        except Exception as e:
+            return f"❌ Update Failed: {str(e)}"  
