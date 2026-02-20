@@ -138,9 +138,9 @@ if persona == "finance":
                 st.success("**Avux Analysis:**")
                 st.markdown(answer)
             st.info("Mode: Direct Inquiry. Query the cloud database without a document.")
-            h_query = st.text_input("Ask a question about historical data:")
+            hist_query = st.text_input("Ask a question about historical data:")
             
-        if h_query:
+        if hist_query:
             with st.spinner("Accessing Database Historian..."):
                 answer = avux.query_ledger_history(h_query)
                 st.markdown(f"**Avux Financial Analysis:**\n\n{answer}")

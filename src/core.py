@@ -33,24 +33,37 @@ class AvuxProcessor:
     # --- INPUT STAGE: Auto-Ranging Ingestion ---
     
     def ingest_document(self, pdf_path):
+        """THE MASTER INGESTOR: Detects Product, Unit, and Document Type."""
+        text = self.extract_text_from_pdf(pdf_path)
+        
+        # 1. THE DISCOVERY PROMPT
+        # We ask the AI to identify the "Engineering Profile" of the document
+        discovery_prompt = """
+        Analyze this industrial document and identify:
+        1. Document Type: (Purchase Order or Delivery Note)
+        2. Primary Product: (e.g. Vent Seal, Fan, Gas Detector)
+        3. Unit of Measure (UoM): (e.g. sqm, units, meters)
+        Return ONLY a JSON object: {"type": "", "product": "", "uom": ""}
         """
-        AUTO-RANGING INGESTOR:
-        Detects if signal is Digital (Text) or Analog (Scan) and processes accordingly.
+        
+        profile = self._call_llm(discovery_prompt, text[:2000], "llama-3.3-70b-versatile")
+        
+        # 2. THE EXTRACTION PROMPT (Dynamic)
+        # We inject the discovered UoM into the extraction rules
+        extract_prompt = f"""
+        Extract data from this {profile['type']} for {profile['product']}.
+        Format as a JSON LIST of objects:
+        [{{
+            "customer": "Name",
+            "product_name": "{profile['product']}",
+            "quantity": 0.0,
+            "uom": "{profile['uom']}",
+            "status": "Processed",
+            "document_ref": "ID Number",
+            "document_type": "{profile['type']}"
+        }}]
         """
-        text = ""
-        try:
-            reader = PdfReader(pdf_path)
-            for page in reader.pages:
-                content = page.extract_text()
-                if content: text += content
-        except Exception:
-            pass
-
-        # Threshold Gate: If less than 50 chars, switch to Vision Transducer
-        if len(text.strip()) < 50:
-            return self._extract_via_vision(pdf_path)
-        else:
-            return self._extract_via_text(text)
+        return self._call_llm(extract_prompt, text, "llama-3.3-70b-versatile")
 
     def _extract_via_text(self, text):
         """Standard extraction for Digital PDFs."""
