@@ -45,40 +45,37 @@ class AvuxProcessor:
             return f"Signal Error: {str(e)}"
 
     def ingest_document(self, pdf_path):
-        """
-        THE MASTER INGESTOR: 
-        1. Detects Signal Quality (Text vs Vision)
-        2. Discovers Engineering Profile (Product/UoM)
-        3. Extracts via Universal Schema
-        """
-        # 1. Capture Raw Signal
         text = self.extract_text_from_pdf(pdf_path)
         
-        # 2. Threshold Gate: If scan detected, use Vision Transducer
-        if len(text.strip()) < 50:
+        # Logic Gate for Noise Detection
+        noise_words = ["camscanner", "scanned with", "pdf scanner"]
+        is_only_noise = any(word in text.lower() for word in noise_words) and len(text) < 200
+
+        # If the digital signal is weak or noisy, return a 'SWITCH_TO_VISION' flag
+        if len(text.strip()) < 100 or is_only_noise:
             return self._extract_via_vision(pdf_path)
         
-        # 3. Discovery Phase: Identify what we are looking at
+        # 1. DISCOVERY (Determining the 'Sensor' Range)
         discovery_prompt = """
-        Identify: 1. Doc Type (PO/DN), 2. Product (Fan/Seal/Gas Unit), 3. UoM (sqm/units).
+        Analyze this industrial document. 
+        IGNORE: Watermarks like 'CamScanner', 'PDF Scanner', or 'Metadata'.
+        FOCUS: The header and main body of the technical document.
+        Identify: 1. Doc Type, 2. Main Product Name, 3. UoM.
         Return ONLY JSON: {"type": "", "product": "", "uom": ""}
         """
-        profile_raw = self._call_llm(discovery_prompt, text[:2000], "llama-3.3-70b-versatile")
+        profile = self._call_llm(discovery_prompt, text[:2000], "llama-3.3-70b-versatile")
         
-        # Ensure we have a clean dictionary
-        profile = profile_raw if isinstance(profile_raw, dict) else {"type": "Document", "product": "Item", "uom": "units"}
-
-        # 4. Universal Extraction Phase
+        # SAFETY CHECK: If discovery isn't a dict, use defaults to prevent crash
+        if not isinstance(profile, dict):
+            profile = {"type": "Document", "product": "Industrial Item", "uom": "units"}
+        
+        # 2. EXTRACTION (Dynamic Data Mapping)
         extract_prompt = f"""
-        Extract data from this {profile.get('type')} into a JSON LIST.
-        Schema: [{{
-            "customer": "Name",
-            "product_name": "{profile.get('product')}",
-            "quantity": 0.0,
-            "uom": "{profile.get('uom')}",
-            "status": "Processed",
-            "document_ref": "ID Number"
-        }}]
+        Extract numeric data from the MAIN TABLE only.
+        STRICT RULES:
+        1. Ignore any mention of 'CamScanner' or scanning software.
+        2. If a customer name is not found, use 'General Client'.
+        3. Ensure 'quantity' is a number. If found in a table, pick the column labeled 'Qty', 'Total', or 'Sqm'.
         """
         return self._call_llm(extract_prompt, text, "llama-3.3-70b-versatile")
 
@@ -176,12 +173,19 @@ class AvuxProcessor:
         return content
 
     def _parse_json(self, content):
+        """Robust Signal Decoder: Strips Markdown noise from JSON strings."""
         try:
-            start = content.find("{") if "{" in content else content.find("[")
-            end = (content.rfind("}") + 1) if "}" in content else (content.rfind("]") + 1)
-            return json.loads(content[start:end])
-        except:
-            return f"Error Parsing JSON: {content}"
+            # Locate the actual JSON payload within the string
+            start = content.find("[") if "[" in content else content.find("{")
+            end = (content.rfind("]") + 1) if "]" in content else (content.rfind("}") + 1)
+            
+            if start == -1 or end == 0:
+                return content # Return raw if no JSON markers found
+                
+            clean_json = content[start:end]
+            return json.loads(clean_json)
+        except Exception as e:
+            return f"Decoder Fault: {str(e)} | Raw Content: {content[:100]}"
 
     # --- AUTHENTICATION ---
 
