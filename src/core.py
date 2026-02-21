@@ -32,55 +32,69 @@ class AvuxProcessor:
 
     # --- INPUT STAGE: Auto-Ranging Ingestion ---
     
+    def extract_text_from_pdf(self, pdf_path):
+        """Standard Text Scraper (Digital Signal)"""
+        text = ""
+        try:
+            reader = PdfReader(pdf_path)
+            for page in reader.pages:
+                content = page.extract_text()
+                if content: text += content
+            return text
+        except Exception as e:
+            return f"Signal Error: {str(e)}"
+
     def ingest_document(self, pdf_path):
-        """THE MASTER INGESTOR: Detects Product, Unit, and Document Type."""
+        """
+        THE MASTER INGESTOR: 
+        1. Detects Signal Quality (Text vs Vision)
+        2. Discovers Engineering Profile (Product/UoM)
+        3. Extracts via Universal Schema
+        """
+        # 1. Capture Raw Signal
         text = self.extract_text_from_pdf(pdf_path)
         
-        # 1. THE DISCOVERY PROMPT
-        # We ask the AI to identify the "Engineering Profile" of the document
+        # 2. Threshold Gate: If scan detected, use Vision Transducer
+        if len(text.strip()) < 50:
+            return self._extract_via_vision(pdf_path)
+        
+        # 3. Discovery Phase: Identify what we are looking at
         discovery_prompt = """
-        Analyze this industrial document and identify:
-        1. Document Type: (Purchase Order or Delivery Note)
-        2. Primary Product: (e.g. Vent Seal, Fan, Gas Detector)
-        3. Unit of Measure (UoM): (e.g. sqm, units, meters)
-        Return ONLY a JSON object: {"type": "", "product": "", "uom": ""}
+        Identify: 1. Doc Type (PO/DN), 2. Product (Fan/Seal/Gas Unit), 3. UoM (sqm/units).
+        Return ONLY JSON: {"type": "", "product": "", "uom": ""}
         """
+        profile_raw = self._call_llm(discovery_prompt, text[:2000], "llama-3.3-70b-versatile")
         
-        profile = self._call_llm(discovery_prompt, text[:2000], "llama-3.3-70b-versatile")
-        
-        # 2. THE EXTRACTION PROMPT (Dynamic)
-        # We inject the discovered UoM into the extraction rules
+        # Ensure we have a clean dictionary
+        profile = profile_raw if isinstance(profile_raw, dict) else {"type": "Document", "product": "Item", "uom": "units"}
+
+        # 4. Universal Extraction Phase
         extract_prompt = f"""
-        Extract data from this {profile['type']} for {profile['product']}.
-        Format as a JSON LIST of objects:
-        [{{
+        Extract data from this {profile.get('type')} into a JSON LIST.
+        Schema: [{{
             "customer": "Name",
-            "product_name": "{profile['product']}",
+            "product_name": "{profile.get('product')}",
             "quantity": 0.0,
-            "uom": "{profile['uom']}",
+            "uom": "{profile.get('uom')}",
             "status": "Processed",
-            "document_ref": "ID Number",
-            "document_type": "{profile['type']}"
+            "document_ref": "ID Number"
         }}]
         """
         return self._call_llm(extract_prompt, text, "llama-3.3-70b-versatile")
 
-    def _extract_via_text(self, text):
-        """Standard extraction for Digital PDFs."""
-        prompt = "Extract delivery data into a JSON LIST: [{'customer': 'Name', 'seal_type': 'Type', 'status': 'Status', 'sqm_delivered': 0.0, 'delivery_note': 'ID'}]"
-        return self._call_llm(prompt, text, model="llama-3.3-70b-versatile")
-
     def _extract_via_vision(self, pdf_path):
-        """Vision extraction for Scanned PDFs using Llama-3.2-Vision replacement: meta llama."""
-        # Convert PDF to Image (Requires Poppler)
+        """Vision extraction using Universal Schema for Scanned PDFs."""
         images = convert_from_path(pdf_path)
         img = images[0]
-        
         buffered = BytesIO()
         img.save(buffered, format="JPEG")
         img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
         
-        prompt = "Extract delivery data from this scan into a JSON LIST: customer, seal_type, status, sqm_delivered, delivery_note."
+        # Updated to Universal Schema
+        prompt = """
+        Extract data from this scan into a JSON LIST.
+        Schema: [{"customer": "Name", "product_name": "Product", "quantity": 0.0, "uom": "sqm/units", "status": "Status", "document_ref": "ID"}]
+        """
         
         completion = self.client.chat.completions.create(
             model="meta-llama/llama-4-scout-17b-16e-instruct",
@@ -98,23 +112,54 @@ class AvuxProcessor:
     # --- PROCESSING STAGE: Persona Routing ---
 
     def get_departmental_insight(self, context, question, persona):
-        """Logic Gate: Routes data through professional persona filters."""
-        
-        strict_rules = "STRICT: If query is irrelevant, return 'Invalid Query'. Temp 0.0. No rambling."
-
+        strict_rules = "STRICT: If irrelevant, return 'Invalid Query'. Temp 0.0. No rambling."
         personas = {
-            "research": f"{strict_rules} You are a Senior R&D Engineer. Focus on material science and tolerances.",
-            "marketing": f"{strict_rules} You are a Marketing Lead. Focus on USPs and customer benefits.",
-            "procurement": f"{strict_rules} You are a BOM Specialist. Focus on materials and quantities.",
-            "finance": f"{strict_rules} You are an Auditor. Focus on sqm counts and delivery tracking.",
-            "content": f"{strict_rules} You are a Content Engine. Merge Technical Signal with Reference Template."
+            "research": f"{strict_rules} You are a Senior R&D Engineer.",
+            "marketing": f"{strict_rules} You are a Marketing Lead.",
+            "procurement": f"{strict_rules} You are a BOM Specialist.",
+            "finance": f"{strict_rules} You are an Auditor. Use the provided ledger history.",
+            "content": f"{strict_rules} You are a Content Engine. Merge Data with Template."
         }
-
         system_msg = personas.get(persona, personas["research"])
-
         return self._call_llm(system_msg, f"CONTEXT: {context[:12000]}\n\nQUES: {question}", "llama-3.3-70b-versatile")
 
-    # --- OUTPUT STAGE: Database & Helpers ---
+    # --- OUTPUT STAGE: Database & Historian ---
+
+    def save_to_ledger(self, data_list):
+        """Writes verified records to the UNIVERSAL_LEDGER DB."""
+        try:
+            # POINTING TO THE NEW UNIVERSAL TABLE
+            self.supabase.table("universal_ledger").insert(data_list).execute()
+            return "✅ Transmission Successful: Logged to Universal Ledger."
+        except Exception as e:
+            return f"❌ Bus Error: {str(e)}"
+
+    def query_ledger_history(self, user_question):
+        """Direct Historian Inquiry (NL2SQL Style)"""
+        try:
+            # POINTING TO THE NEW UNIVERSAL TABLE
+            response = self.supabase.table("universal_ledger").select("*").execute()
+            history_data = response.data
+            
+            if not history_data: return "Historian is empty."
+
+            prompt = f"""
+            You are the Avux Operations Auditor.
+            CONTEXT: {json.dumps(history_data)}
+            TASK: Summarize totals, quantities, and status per customer/product.
+            """
+            return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")
+        except Exception as e:
+            return f"Database Retrieval Fault: {str(e)}"
+
+    def get_ledger_history(self):
+        """Retrieves history for the Dashboard."""
+        try:
+            return self.supabase.table("universal_ledger").select("*").execute().data
+        except:
+            return None
+
+    # --- HELPERS ---
 
     def _call_llm(self, system_prompt, user_content, model):
         completion = self.client.chat.completions.create(
@@ -125,126 +170,27 @@ class AvuxProcessor:
             model=model,
             temperature=0.0
         )
-        # Check if we expect JSON (for ingestion) or text (for chat)
         content = completion.choices[0].message.content
-        if "[" in content and "]" in content:
+        if "[" in content or "{" in content:
             return self._parse_json(content)
         return content
 
     def _parse_json(self, content):
         try:
-            start = content.find("[")
-            end = content.rfind("]") + 1
+            start = content.find("{") if "{" in content else content.find("[")
+            end = (content.rfind("}") + 1) if "}" in content else (content.rfind("]") + 1)
             return json.loads(content[start:end])
         except:
             return f"Error Parsing JSON: {content}"
 
-    def save_to_ledger(self, data_list):
-        """Writes verified records to Avux_Smart_Intranet DB."""
-        try:
-            self.supabase.table("operations_ledger").insert(data_list).execute()
-            return "✅ Transmission Successful: Data logged to Supabase."
-        except Exception as e:
-            return f"❌ Bus Error: {str(e)}"
-        
-    def query_ledger_history(self, user_question):
-        """
-        DATABASE INQUIRY MODE:
-        Queries the Supabase Historian directly using Natural Language.
-        """
-        # 1. Fetch current data from Supabase (The 'Signal' from the Historian)
-        try:
-            response = self.supabase.table("operations_ledger").select("*").execute()
-            history_data = response.data
-        except Exception as e:
-            return f"Database Retrieval Fault: {str(e)}"
-
-        # 2. Feed the history to the AI to answer the question
-        prompt = f"""
-        You are the Avux Operations Auditor. 
-        You have access to the Historical Ledger provided in the context.
-        TASK: Answer the user's question based ONLY on the database records.
-        CONTEXT: {json.dumps(history_data)}
-        """
-        
-        return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")
-    
-    def get_ledger_history(self):
-        """Fetches all rows from the historian for dashboarding."""
-        try:
-            response = self.supabase.table("operations_ledger").select("*").execute()
-            return response.data
-        except Exception as e:
-            return None
-
-    def calculate_engineering_logic(self, context, math_problem):
-        """
-        Calculates complex engineering formulas by forcing the AI 
-        to show its 'Workings' and verified math.
-        """
-        prompt = f"""
-        You are an Avux R&D Calculation Agent.
-        CONTEXT: {context[:5000]}
-        TASK: Solve the user's engineering problem.
-        
-        STRICT RULES:
-        1. State the Formula used (e.g., Atkinson's Law for ventilation).
-        2. Identify the Variables from the context or user input.
-        3. Perform the calculation step-by-step.
-        4. If a value is missing, state 'Insufficient Data to calculate'.
-        """
-        return self._call_llm(prompt, math_problem, "llama-3.3-70b-versatile")  
+    # --- AUTHENTICATION ---
 
     def login(self, email, password):
-        """Authenticates the user and sets the session badge."""
-        try:
-            res = self.supabase.auth.sign_in_with_password({"email": email, "password": password})
-            return res
-        except Exception as e:
-            return f"Auth Error: {str(e)}"
-
-    def get_user(self):
-        """Checks who is currently logged in."""
-        return self.supabase.auth.get_user()
+        return self.supabase.auth.sign_in_with_password({"email": email, "password": password})
 
     def update_password(self, new_password):
-        """Allows a logged-in user to update their password without an email link."""
         try:
-            res = self.supabase.auth.update_user({"password": new_password})
+            self.supabase.auth.update_user({"password": new_password})
             return "✅ Password updated successfully."
         except Exception as e:
             return f"❌ Update Failed: {str(e)}"
-
-    def query_ledger_history(self, user_question):
-        """
-        HISTORIAN INQUIRY:
-        Queries the Supabase database and uses LLM to synthesize an answer.
-        """
-        try:
-            # 1. Fetch the 'Historian' data (All rows)
-            # This is like pulling the CSV from a PLC log
-            response = self.supabase.table("operations_ledger").select("*").execute()
-            history_data = response.data
-            
-            if not history_data:
-                return "Historian is empty. No data recorded yet."
-
-            # 2. Feed the data to the LLM as 'Context'
-            prompt = f"""
-            You are the Avux Operations Auditor.
-            You are looking at the 'Avux_Smart_Intranet' ledger history.
-            
-            TASK: Answer the user's question based ONLY on the provided ledger data.
-            LEDGER DATA: {json.dumps(history_data)}
-            
-            STRICT RULES:
-            - Provide totals and summaries clearly.
-            - If asking about SQM, sum the 'sqm_delivered' values.
-            - If data is missing for a specific date, state it clearly.
-            - Tone: Industrial Audit report style.
-            """
-            
-            return self._call_llm(prompt, user_question, "llama-3.3-70b-versatile")
-            
-        except Exception as e:
-            return f"Database Retrieval Fault: {str(e)}"  
