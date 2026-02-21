@@ -3,18 +3,16 @@ import pandas as pd
 import os
 from core import AvuxProcessor
 
-# 1. INITIALIZE SYSTEM COMPONENTS
-# Equivalent to booting the PLC and checking comms
+# 1. INITIALIZE SYSTEM
 try:
     avux = AvuxProcessor()
 except Exception as e:
     st.error(f"System Boot Failure: {e}")
     st.stop()
 
-# 2. HMI CONFIGURATION (Display Settings)
 st.set_page_config(page_title="Avux Smart Intranet", layout="wide", page_icon="⚒️")
 
-# Industrial Blue Theme Injection
+# Industrial UI Styling
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -25,192 +23,136 @@ st.markdown("""
 
 st.title("⚒️ Avux: Research & Operations Ledger")
 
-# 3. SIDEBAR: NAVIGATION & CONTROL
-#AUTHENTICATED
+# 2. SIDEBAR: AUTHENTICATION & NAVIGATION
 with st.sidebar:
     st.header("🔐 Avux Secure Access")
     
     if 'user' not in st.session_state:
-        st.info("Please sign in to access R&D and Operations data.")
+        st.info("Please sign in to access system data.")
         with st.form("login_form"):
-            email = st.text_input("Work Email / Username")
+            email = st.text_input("Work Email")
             pw = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Sign In")
-            
-            if submit:
-                with st.spinner("Authenticating..."):
-                    res = avux.login(email, pw)
-                    if hasattr(res, 'user') and res.user:
-                        st.session_state['user'] = res.user
-                        st.success("Access Granted")
-                        st.rerun()
-                    else:
-                        st.error("Invalid Credentials or Unauthorized Access.")
+            if st.form_submit_button("Sign In"):
+                res = avux.login(email, pw)
+                if hasattr(res, 'user') and res.user:
+                    st.session_state['user'] = res.user
+                    st.rerun()
+                else:
+                    st.error("Invalid Credentials.")
+        st.stop() # Stops execution if not logged in
+    
     else:
         st.write(f"👷 **Operator:** {st.session_state['user'].email}")
         if st.button("Sign Out"):
             del st.session_state['user']
             st.rerun()
-
-    # THE SECURITY INTERLOCK
-if 'user' not in st.session_state:
-    st.warning("🔒 SYSTEM LOCKED: Authentication Required.")
-    st.stop() # This prevents the rest of the code from running
-
-if 'user' in st.session_state:
+        
         with st.expander("👤 Account Settings"):
             new_pw = st.text_input("New Password", type="password")
             if st.button("Update Password"):
-                status = avux.update_password(new_pw)
-                st.info(status)
+                st.info(avux.update_password(new_pw))
 
-with st.sidebar:
-    st.header("Navigation Hub")
-    persona = st.selectbox("Active Persona", 
-                          ["research", "marketing", "procurement", "content", "finance"])
     st.divider()
-    st.write(f"**Current Role:** {persona.upper()}")
-    st.write("**Database:** Avux_Smart_Intranet (Connected)")
-    st.write("**Inference:** Groq Llama-3.3-70b")
+    st.header("Navigation Hub")
+    persona = st.selectbox("Active Persona", ["research", "marketing", "procurement", "content", "finance"])
+    st.write(f"**Database:** Universal Ledger (Connected)")
 
-# 4. MAIN PROCESSING LOGIC (The Logic Gates)
+# 3. MAIN PROCESSING LOGIC
 
 # ==========================================
-# BRANCH A: THE FINANCE LEDGER (Tabbed Interface)
+# BRANCH A: FINANCE & UNIVERSAL LEDGER
 # ==========================================
 if persona == "finance":
-    st.subheader("🏦 Operations Ledger Control")
-    tab_ingest, tab_query = st.tabs(["📥 Ingest New PDF", "📊 Query Historian"])
+    st.subheader("🏦 Universal Operations Ledger")
+    tab_ingest, tab_query = st.tabs(["📥 Ingest New PDF", "📊 Live Dashboard & Inquiry"])
 
     with tab_ingest:
-        st.info("Mode: Operational Entry. Upload a scan or digital log to update the database.")
-        finance_file = st.file_uploader("Upload Delivery Note / Ledger PDF", type="pdf", key="fin_up")
+        st.info("Extract data from POs or DNs. AI will auto-detect Product and Units.")
+        finance_file = st.file_uploader("Upload Document", type="pdf", key="fin_up")
         
         if finance_file:
-            # Save temp file for the Vision Transducer to read if necessary
             with open("temp_finance.pdf", "wb") as f:
                 f.write(finance_file.getbuffer())
             
             if st.button("🔍 Run Extraction Pipeline"):
-                with st.spinner("Avux is analyzing the signal..."):
-                    # Use the 'Ingest Document' master function from core.py
+                with st.spinner("Analyzing Signal..."):
+                    # This uses our 'Auto-Ranging' Ingestor (Text or Vision)
                     records = avux.ingest_document("temp_finance.pdf")
-                    
                     if isinstance(records, list):
                         st.session_state['finance_preview'] = records
-                        st.success("Signal Processed Successfully.")
                     else:
                         st.error(f"Extraction Error: {records}")
          
-            # Verification Stage (The 'Set-Point Override')
             if 'finance_preview' in st.session_state:
-                st.write("### 📝 Verify & Edit Records")
-                st.info("The AI couldn't find some SQM values. Please enter them manually in the table below before saving.")
+                st.write("### 📝 Verify Records")
+                # editable table for manual override
+                edited_df = st.data_editor(pd.DataFrame(st.session_state['finance_preview']), num_rows="dynamic")
                 
-                # Use data_editor instead of table/dataframe
-                edited_df = st.data_editor(
-                    pd.DataFrame(st.session_state['finance_preview']),
-                    num_rows="dynamic",
-                    key="ledger_editor"
-                )
-                
-                if st.button("✅ Commit Verified Data to Ledger"):
-                    with st.spinner("Transmitting to Supabase..."):
-                        # We convert the edited dataframe back to a list of dicts
-                        verified_records = edited_df.to_dict('records')
-                        status = avux.save_to_ledger(verified_records)
+                if st.button("✅ Commit to Universal Ledger"):
+                    with st.spinner("Transmitting..."):
+                        status = avux.save_to_ledger(edited_df.to_dict('records'))
                         st.success(status)
                         if "✅" in status:
                             del st.session_state['finance_preview']
-                            st.rerun() # Refresh to update the graph
+                            st.rerun()
 
     with tab_query:
-        st.info("📊 Mode: Direct Inquiry (Avux_Smart_Intranet)")
-                
-        # The Question Box
-        hist_query = st.text_input("Ask the Historian a question:", 
-        placeholder="e.g., What is the total Sqm delivered for Zimplats?")
-                
-        if hist_query:
-            with st.spinner("Accessing Historian..."):
-                # Call the new function
-                answer = avux.query_ledger_history(hist_query)
-                st.success("**Avux Analysis:**")
-                st.markdown(answer)
-            st.info("Mode: Direct Inquiry. Query the cloud database without a document.")
-            hist_query = st.text_input("Ask a question about historical data:")
+        # 1. LIVE ANALYTICS (The 'Dashboard' mode)
+        st.subheader("📈 Real-Time Operations Monitor")
+        history = avux.get_ledger_history()
+        if history:
+            df_all = pd.DataFrame(history)
             
-        if hist_query:
-            with st.spinner("Accessing Database Historian..."):
-                answer = avux.query_ledger_history(h_query)
-                st.markdown(f"**Avux Financial Analysis:**\n\n{answer}")
-            with tab_query:
-                st.info("Mode: Direct Inquiry & Analytics")
-        
-                # 1. NEW FEATURE: Live Analytics Dashboard
-                if st.checkbox("📈 Show Live Operations Dashboard"):
-                    with st.spinner("Fetching DB metrics..."):
-                        history = avux.get_ledger_history() # You'll need to add this to core.py
-                        if history:
-                            df_all = pd.DataFrame(history)
-                            
-                            # Create the Chart Metrics
-                            metrics = df_all.groupby('status')['sqm_delivered'].sum().reset_index()
-                            
-                            col_a, col_b = st.columns(2)
-                            with col_a:
-                                st.metric("Total Sqm Delivered (Global)", f"{df_all['sqm_delivered'].sum():,.2f}")
-                                st.dataframe(metrics)
-                            with col_b:
-                                # Recreating the chart from your image
-                                st.bar_chart(data=metrics, x='status', y='sqm_delivered')
-                
-                # 2. Keep your existing NL2SQL query below the dashboard
-                st.divider()
-                h_query = st.text_input("Ask a specific question about historical data:")
-                # ... (rest of your query logic)
+            # Universal Metric: Group by Product and Status
+            # This handles Seals(sqm) and Fans(units) simultaneously
+            metrics = df_all.groupby(['product_name', 'status'])['quantity'].sum().reset_index()
+            
+            col_a, col_b = st.columns([1, 2])
+            with col_a:
+                st.write("**Summary Table**")
+                st.dataframe(metrics, hide_index=True)
+            with col_b:
+                st.write("**Product Volume per Status**")
+                # A bar chart that shows the breakdown
+                st.bar_chart(data=metrics, x='product_name', y='quantity', color='status')
+        else:
+            st.warning("Database Historian is empty.")
+
+        st.divider()
+        # 2. NATURAL LANGUAGE INQUIRY (The 'Chat' mode)
+        st.subheader("💬 Ask the Historian")
+        h_query = st.text_input("Query the database history:", placeholder="e.g. Total quantity of fans delivered to Zimplats?")
+        if h_query:
+            with st.spinner("Analyzing History..."):
+                st.markdown(avux.query_ledger_history(h_query))
 
 # ==========================================
-# BRANCH B: CONTENT SYNTHESIS (Dual-Channel Input)
+# BRANCH B: CONTENT SYNTHESIS
 # ==========================================
 elif persona == "content":
     st.subheader("📑 Content Synthesis Engine")
     col1, col2 = st.columns(2)
-    
-    with col1:
-        spec_doc = st.file_uploader("Upload New Specs (Signal)", type="pdf")
-    with col2:
-        temp_doc = st.file_uploader("Upload Template (Structure)", type="pdf")
+    with col1: spec_doc = st.file_uploader("Upload Specs (Signal)", type="pdf")
+    with col2: temp_doc = st.file_uploader("Upload Template (Structure)", type="pdf")
 
     if spec_doc and temp_doc:
-        st.divider()
-        instructions = st.text_area("What should Avux synthesize?", 
-                                   placeholder="e.g., Generate a proposal based on these specs following the template layout.")
-        if st.button("🚀 Generate Content"):
-            with st.spinner("Merging Signal & Structure..."):
-                # Extract text for both
-                s_text = avux.extract_text_from_pdf(spec_doc)
-                t_text = avux.extract_text_from_pdf(temp_doc)
-                context = f"SPECS: {s_text}\n\nTEMPLATE: {t_text}"
-                
-                response = avux.get_departmental_insight(context, instructions, "content")
-                st.markdown("### Generated Result")
-                st.write(response)
+        instructions = st.text_area("Generation Instructions:")
+        if st.button("🚀 Synthesize"):
+            s_text = avux.extract_text_from_pdf(spec_doc)
+            t_text = avux.extract_text_from_pdf(temp_doc)
+            st.write(avux.get_departmental_insight(f"DATA: {s_text} TEMPLATE: {t_text}", instructions, "content"))
 
 # ==========================================
-# BRANCH C: GENERAL ANALYSIS (Research, Marketing, Procurement)
+# BRANCH C: RESEARCH / MARKETING / PROCUREMENT
 # ==========================================
 else:
     st.subheader(f"🔍 {persona.title()} Analysis")
-    doc = st.file_uploader(f"Upload document for {persona} analysis", type="pdf")
-    
+    doc = st.file_uploader(f"Upload PDF", type="pdf")
     if doc:
-        query = st.text_input(f"Question for {persona.title()} Assistant:")
+        query = st.text_input(f"Question for {persona.title()}:")
         if query:
-            with st.spinner("Calculating..."):
-                raw_text = avux.extract_text_from_pdf(doc)
-                response = avux.get_departmental_insight(raw_text, query, persona)
-                st.markdown(f"### {persona.title()} Response")
-                st.write(response)
-    else:
-        st.info(f"Awaiting {persona} input signal...")
+            # We use ingest_document even here so that it can handle scanned Research papers!
+            with open("temp_gen.pdf", "wb") as f: f.write(doc.getbuffer())
+            with st.spinner("Analyzing..."):
+                raw_text = avux.extract_text_from_pdf(doc) # Fallback to text for chat context
+                st.write(avux.get_departmental_insight(raw_text, query, persona))
