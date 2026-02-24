@@ -10,7 +10,15 @@ def load_css(file_name):
     with open(file_name) as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
+# Path to your assets
 load_css("assets/style.css")
+
+# --- SIDEBAR BRANDING ---
+with st.sidebar:
+    # logo version with White Text/Curves for the blue background
+    if os.path.exists("assets/Logo1.png"):
+        st.image("assets/Logo4.png", use_container_width=True)
+    st.divider()
 
 # 1. INITIALIZE SYSTEM
 try:
