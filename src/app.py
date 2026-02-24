@@ -6,58 +6,11 @@ from PIL import Image
 import os
 
 # --- 1. BRANDING & STYLE CONFIGURATION ---
-def apply_custom_styling():
-    st.markdown("""
-        <style>
-        /* Main background */
-        .stApp { background-color: #fcfcfc; }
-        
-        /* Sidebar branding */
-        [data-testid="stSidebar"] {
-            background-color: #1a2a3a; /* Deep Navy Industrial */
-            color: white;
-        }
-        
-        /* Professional Buttons */
-        .stButton>button {
-            width: 100%;
-            border-radius: 8px;
-            height: 3.5em;
-            background-color: #007BFF;
-            color: white;
-            font-weight: 600;
-            border: none;
-            transition: 0.3s;
-        }
-        .stButton>button:hover {
-            background-color: #0056b3;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
+def load_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-        /* Card-like containers for metrics */
-        div[data-testid="stMetric"] {
-            background-color: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border-left: 5px solid #007BFF;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-# Boot System
-avux = AvuxProcessor()
-apply_custom_styling()
-
-# Header with Logo
-col_logo, col_text = st.columns([1, 4])
-with col_logo:
-    if os.path.exists("assets/logo.png"):
-        logo = Image.open("assets/logo.png")
-        st.image(logo, width=120)
-with col_text:
-    st.title("Avux Smart Intranet")
-    st.caption("Industrial R&D and Operations Intelligence Platform")
+load_css("assets/style.css")
 
 # 1. INITIALIZE SYSTEM
 try:
