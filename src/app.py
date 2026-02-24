@@ -25,11 +25,11 @@ except Exception as e:
 
 # --- 4. SIDEBAR BRANDING & AUTH ---
 with st.sidebar:
-    # Logic Fix: Check for Logo4 directly
-    if os.path.exists("assets/Logo4.png"):
-        st.image("assets/Logo4.png", use_container_width=True)
+    if os.path.exists("assets/Logo1.png"):
+        # Setting width to 180 pixels for a balanced look
+        st.image("assets/Logo1.png", width=180) 
     else:
-        st.warning("Logo4.png not found in assets/")
+        st.info("Logo placeholder")
     
     st.divider()
     st.header("🔐 Secure Access")
