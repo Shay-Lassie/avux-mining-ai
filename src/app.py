@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -5,153 +6,96 @@ from core import AvuxProcessor
 from PIL import Image
 import os
 
-# --- 1. MANDATORY: FIRST COMMAND ---
+# 1. BOOT SEQUENCE
 st.set_page_config(page_title="Avux Smart Intranet", layout="wide", page_icon="⚒️")
 
-# --- 2. BRANDING & STYLE ---
-def load_css(file_name):
-    if os.path.exists(file_name):
-        with open(file_name) as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+def load_css(file):
+    if os.path.exists(file):
+        with open(file) as f: st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 load_css("assets/style.css")
 
-# --- 3. INITIALIZE ENGINE ---
 try:
     avux = AvuxProcessor()
 except Exception as e:
-    st.error(f"System Boot Failure: {e}")
-    st.stop()
+    st.error(f"Boot Failure: {e}"); st.stop()
 
-# --- 4. SIDEBAR BRANDING & AUTH ---
+# 2. SIDEBAR & AUTH
 with st.sidebar:
-    if os.path.exists("assets/Logo1.png"):
-        # Setting width to 180 pixels for a balanced look
-        st.image("assets/Logo1.png", width=180) 
-    else:
-        st.info("Logo placeholder")
-    
-    st.divider()
+    if os.path.exists("assets/Logo4.png"): st.image("assets/Logo4.png", width=180)
     st.header("🔐 Secure Access")
-    
     if 'user' not in st.session_state:
-        with st.form("login_form"):
-            email = st.text_input("Work Email")
-            pw = st.text_input("Password", type="password")
+        with st.form("login"):
+            e = st.text_input("Work Email"); p = st.text_input("Password", type="password")
             if st.form_submit_button("Sign In"):
-                res = avux.login(email, pw)
-                if hasattr(res, 'user') and res.user:
-                    st.session_state['user'] = res.user
-                    st.rerun()
-                else:
-                    st.error("Invalid Credentials.")
-        st.stop() 
+                res = avux.login(e, p)
+                if hasattr(res, 'user'): st.session_state['user'] = res.user; st.rerun()
+                else: st.error("Denied.")
+        st.stop()
     else:
-        st.write(f"👷 **Operator:** {st.session_state['user'].email}")
-        if st.button("Sign Out"):
-            del st.session_state['user']
-            st.rerun()
-        
-        with st.expander("👤 Account Settings"):
-            new_pw = st.text_input("New Password", type="password")
-            if st.button("Update Password"):
-                st.info(avux.update_password(new_pw))
+        st.write(f"👷 {st.session_state['user'].email}")
+        if st.button("Sign Out"): del st.session_state['user']; st.rerun()
+        persona = st.selectbox("Persona", ["finance", "auditor", "research", "content", "marketing"])
 
-    st.divider()
-    st.header("Navigation")
-    # Added 'auditor' to the personas
-    persona = st.selectbox("Active Persona", ["research", "marketing", "procurement", "content", "finance", "auditor"])
-    st.write(f"**Ledger:** Connected")
-
-# --- 5. MAIN CONTENT ---
+# 3. MAIN DASHBOARD
 st.title("⚒️ Avux: Research & Operations Ledger")
 
-# ==========================================
-# FINANCE PERSONA
-# ==========================================
 if persona == "finance":
-    st.subheader("🏦 Universal Operations Ledger")
-    tab_ingest, tab_query = st.tabs(["📥 Ingest New PDF", "📊 Live Dashboard"])
-
-    with tab_ingest:
-        finance_file = st.file_uploader("Upload Document", type="pdf", key="fin_up")
-        if finance_file:
-            with open("temp_finance.pdf", "wb") as f:
-                f.write(finance_file.getbuffer())
-            if st.button("🔍 Run Extraction"):
-                with st.spinner("Analyzing..."):
-                    records = avux.ingest_document("temp_finance.pdf")
-                    if isinstance(records, list):
-                        st.session_state['finance_preview'] = records
-         
-            if 'finance_preview' in st.session_state:
-                edited_df = st.data_editor(pd.DataFrame(st.session_state['finance_preview']), num_rows="dynamic")
-                if st.button("✅ Commit to Ledger"):
-                    status = avux.save_to_ledger(edited_df.to_dict('records'))
-                    st.success(status)
-                    if "✅" in status:
-                        del st.session_state['finance_preview']
-                        st.rerun()
-
-    with tab_query:
-        st.subheader("📈 Real-Time Operations Monitor")
-        history = avux.get_ledger_history()
-        if history:
-            df = pd.DataFrame(history)
-            
-            # --- KPI Metrics ---
+    t1, t2 = st.tabs(["📥 Ingest Data", "📊 Dashboard & Query"])
+    with t1:
+        f = st.file_uploader("Upload PDF")
+        if f:
+            with open("tmp.pdf","wb") as tmp: tmp.write(f.getbuffer())
+            if st.button("🔍 Extract"):
+                recs = avux.ingest_document("tmp.pdf")
+                if isinstance(recs, list): st.session_state['pre'] = recs
+        if 'pre' in st.session_state:
+            edt = st.data_editor(pd.DataFrame(st.session_state['pre']))
+            if st.button("✅ Save to Ledger"):
+                st.info(avux.save_to_ledger(edt.to_dict('records')))
+                del st.session_state['pre']; st.rerun()
+    with t2:
+        hist = avux.get_ledger_history()
+        if hist:
+            df = pd.DataFrame(hist)
             k1, k2 = st.columns(2)
-            k1.metric("Total Thruput", f"{df['quantity'].sum():,.0f} units")
-            k2.metric("Records Found", len(df))
-
-            # --- Plotly Chart ---
-            fig = px.bar(df, x="product_name", y="quantity", color="status", barmode="group",
-                         color_discrete_map={"Delivered": "#84BD00", "Ordered": "#0072CE"})
+            k1.metric("Total Qty", f"{df['quantity'].sum():,.0f}")
+            k2.metric("Records", len(df))
+            fig = px.bar(df, x="product_name", y="quantity", color="status", color_discrete_map={"Delivered":"#84BD00","Ordered":"#0072CE"})
             st.plotly_chart(fig, use_container_width=True)
-            
-            st.divider()
-            h_query = st.text_input("Query the history:")
-            if h_query:
-                st.markdown(avux.query_ledger_history(h_query))
+            q = st.text_input("Ask the Historian:")
+            if q: st.markdown(avux.query_ledger_history(q))
 
-# ==========================================
-# AUDITOR PERSONA
-# ==========================================
 elif persona == "auditor":
-    st.subheader("🔦 Ventilation Audit Portal")
-    col1, col2, col3 = st.columns(3)
-    q_in = col1.number_input("Intake Flow (m3/s)", 0.0)
-    q_face = col2.number_input("Face Flow (m3/s)", 0.0)
-    
-    if q_in > 0:
-        leakage = 100 - ((q_face/q_in)*100)
-        if leakage > 20: st.error(f"Critical Leakage: {leakage:.1f}%")
-        else: st.success(f"System Nominal: {leakage:.1f}% Leakage")
-        
-        if st.button("Generate Audit Report"):
-            res = avux.get_departmental_insight(f"In:{q_in}, Face:{q_face}, Leakage:{leakage}%", "Generate remediation plan", "research")
-            st.write(res)
-
-# ==========================================
-# CONTENT / OTHER PERSONAS
-# ==========================================
-elif persona == "content":
-    st.subheader("📑 Content Synthesis Engine")
+    st.subheader("🔦 Ventilation Audit Dashboard")
     c1, c2 = st.columns(2)
-    spec = c1.file_uploader("Specs", type="pdf")
-    temp = c2.file_uploader("Template", type="pdf")
-    if spec and temp:
-        prompt = st.text_area("Instructions")
-        if st.button("Synthesize"):
-            s_t = avux.extract_text_from_pdf(spec)
-            t_t = avux.extract_text_from_pdf(temp)
-            st.write(avux.get_departmental_insight(f"S:{s_t} T:{t_t}", prompt, "content"))
+    q_in = c1.number_input("Intake Flow (m3/s)", 0.0)
+    q_fa = c2.number_input("Face Flow (m3/s)", 0.0)
+    if q_in > 0:
+        leak = 100 - ((q_fa/q_in)*100)
+        st.metric("Leakage Rate", f"{leak:.1f}%", delta=f"{leak:.1f}%", delta_color="inverse")
+        if st.button("Generate Remediation"):
+            st.write(avux.get_departmental_insight(f"Leak:{leak}%", "Plan steps", "research"))
 
-else:
-    st.subheader(f"🔍 {persona.title()} Analysis")
-    doc = st.file_uploader("Upload PDF", type="pdf")
-    if doc:
-        query = st.text_input("Question:")
-        if query:
-            raw = avux.extract_text_from_pdf(doc)
-            st.write(avux.get_departmental_insight(raw, query, persona))
+elif persona == "research":
+    t_doc, t_vis = st.tabs(["📄 Doc Analysis", "📸 Equipment Inspection"])
+    with t_doc:
+        doc = st.file_uploader("Upload Specs")
+        if doc:
+            q = st.text_input("Query Specs:")
+            if q: st.write(avux.get_departmental_insight(avux.extract_text_from_pdf(doc), q, "research"))
+    with t_vis:
+        img = st.file_uploader("Upload Photo", type=['jpg','png'])
+        if img:
+            st.image(img, width=400)
+            if st.button("🚀 Inspect"):
+                st.write(avux.inspect_equipment(img.getvalue()))
+
+elif persona == "content":
+    c1, c2 = st.columns(2)
+    s = c1.file_uploader("Specs")
+    t = c2.file_uploader("Template")
+    if s and t:
+        ins = st.text_area("Instructions")
+        if st.button("Synthesize"):
+            st.write(avux.get_departmental_insight(f"S:{avux.extract_text_from_pdf(s)} T:{avux.extract_text_from_pdf(t)}", ins, "content"))
