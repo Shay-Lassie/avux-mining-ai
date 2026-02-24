@@ -1,0 +1,58 @@
+/* Import Corporate Typefaces */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600&family=Open+Sans:wght@400;600&display=swap');
+
+/* Main Body Settings */
+.stApp {
+    background-color: #FFFFFF;
+    font-family: 'Open Sans', sans-serif;
+}
+
+/* Sidebar Styling - Using Avux Blue */
+[data-testid="stSidebar"] {
+    background-color: #0072CE;
+    color: white;
+}
+
+/* Sidebar Text Color Correction */
+[data-testid="stSidebar"] .stMarkdown p {
+    color: white;
+}
+
+/* Buttons - Custom Avux Style */
+.stButton>button {
+    width: 100%;
+    border-radius: 4px;
+    /* Industrial Sharpness */
+    height: 3.5em;
+    background-color: #0072CE;
+    /* Primary Blue */
+    color: white;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    border: 2px solid #0072CE;
+    transition: 0.3s;
+}
+
+.stButton>button:hover {
+    background-color: #84BD00;
+    /* Hover turns to Avux Green */
+    border-color: #84BD00;
+    color: white;
+}
+
+/* Metric Cards */
+div[data-testid="stMetric"] {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 10px solid #84BD00;
+    /* Accent with Avux Green */
+}
+
+/* Header Text */
+h1,
+h2,
+h3 {
+    font-family: 'Montserrat', sans-serif;
+    color: #0072CE;
+}
