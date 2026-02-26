@@ -1,46 +1,82 @@
 /* assets/style.css */
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600&family=Open+Sans:wght@400;600&display=swap');
 
+/* 1. GLOBAL DEFAULTS (Main Area) */
 .stApp {
-    background-color: #fcfcfc;
+    background-color: #FFFFFF;
     font-family: 'Open Sans', sans-serif;
+    color: #1a2a3a !important;
+    /* Dark Navy for main readability */
 }
 
-/* SIDEBAR FIX: Avux Blue background with White text */
+/* Ensure Headers in Main Area are Visible */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span {
+    color: #1a2a3a !important;
+}
+
+/* 2. SIDEBAR - THE BLUE "COMMAND CENTER" */
 [data-testid="stSidebar"] {
     background-color: #0072CE !important;
 }
 
-[data-testid="stSidebar"] * {
+/* Force all labels and text in SIDEBAR to be White */
+[data-testid="stSidebar"] .stMarkdown p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stHeader {
     color: white !important;
 }
 
-/* INPUT BOXES in Sidebar: Ensure they are readable */
-[data-testid="stSidebar"] input {
-    color: #1a2a3a !important;
+/* 3. INPUT BOXES - INDUSTRIAL DARK MODE */
+/* As requested: Dark background with White text */
+input,
+textarea,
+[data-baseweb="select"] {
+    background-color: #1a2a3a !important;
+    color: white !important;
+    border: 1px solid #0072CE !important;
 }
 
-/* BUTTONS: Avux Blue to Green Hover */
+/* Ensure the text you type is visible and white */
+[data-testid="stWidgetLabel"] p {
+    color: inherit;
+    /* Inherits from Sidebar or Main Area accordingly */
+}
+
+/* 4. BUTTONS - AVUX BRAND */
 .stButton>button {
-    width: 100%;
-    border-radius: 4px;
-    background-color: #0072CE;
+    width: 100% !important;
+    background-color: #0072CE !important;
     color: white !important;
-    font-family: 'Montserrat', sans-serif;
-    font-weight: 600;
-    border: none;
+    font-family: 'Montserrat', sans-serif !important;
+    border: none !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .stButton>button:hover {
     background-color: #84BD00 !important;
-    border: none;
+    /* Avux Green */
+    transition: 0.3s;
 }
 
-/* INDUSTRIAL METRIC CARDS */
-div[data-testid="stMetric"] {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    border-left: 8px solid #84BD00;
+/* 5. ALERT BOXES (Warnings/Info) */
+/* These usually have light backgrounds, so we need DARK text here */
+div[data-testid="stNotification"] p {
+    color: #1a2a3a !important;
+}
+
+/* 6. TAB STYLING */
+button[data-baseweb="tab"] {
+    color: #1a2a3a !important;
+}
+
+button[aria-selected="true"] {
+    color: #0072CE !important;
+    border-bottom-color: #0072CE !important;
 }
