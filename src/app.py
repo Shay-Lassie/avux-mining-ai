@@ -20,7 +20,11 @@ load_css("assets/style.css")
 
 # Initialize the Processor (The PLC)
 try:
-    avux = AvuxProcessor()
+   # --- 1. BOOT SEQUENCE WITH CACHING ---
+    @st.cache_resource # This tells Streamlit: 'Initialize this once and keep it in memory'
+    def get_avux_engine():
+        return AvuxProcessor()
+
 except Exception as e:
     st.error(f"Hardware Link Fault: {e}")
     st.stop()
