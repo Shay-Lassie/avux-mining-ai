@@ -61,10 +61,14 @@ class AvuxProcessor:
         return completion.choices[0].message.content
 
     def save_to_ledger(self, data_list):
+        """Writes verified records to the UNIVERSAL_LEDGER DB."""
         try:
-            self.supabase.table("universal_ledger").insert(data_list).execute()
+            # Pointing specifically to the universal table
+            res = self.supabase.table("universal_ledger").insert(data_list).execute()
             return "✅ Transmission Successful."
-        except Exception as e: return f"❌ Error: {str(e)}"
+        except Exception as e:
+            # This will tell us EXACTLY what is wrong (e.g., "column quantity does not exist")
+            return f"❌ Bus Error: {str(e)}"
 
     def get_ledger_history(self):
         return self.supabase.table("universal_ledger").select("*").execute().data
