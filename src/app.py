@@ -137,23 +137,28 @@ if persona == "finance":
 # --- PERSONA: AUDITOR (VENTILATION SPECIALIST) ---
 elif persona == "auditor":
     st.subheader("🔦 Ventilation Audit Portal")
-    col1, col2, col3 = st.columns(3)
     
-    with col1: q_in = st.number_input("Intake Flow (m³/s)", 0.0)
-    with col2: q_fa = st.number_input("Face Flow (m³/s)", 0.0)
-    with col3: p_st = st.number_input("Static Pressure (Pa)", 0.0)
-    
-    if q_in > 0:
-        leak = 100 - ((q_fa / q_in) * 100)
-        # Visual Meter
-        st.metric("Leakage Rate", f"{leak:.1f}%", delta=f"{leak:.1f}%", delta_color="inverse")
+    # Mode Toggle: Airflow vs Tracer Gas
+    audit_mode = st.radio("Select Audit Method", ["Volumetric Airflow", "Tracer Gas Concentration"])
+
+    if audit_mode == "Tracer Gas Concentration":
+        st.info("📊 Input Peak PPM from Gas Detector Nodes")
+        col1, col2 = st.columns(2)
+        ppm_intake = col1.number_input("Injected Concentration (PPM)", 1000, 10000, 5000)
+        ppm_return = col2.number_input("Detected at Return Point (PPM)", 0, 10000, 3500)
         
-        if st.button("📝 Generate Remediation Report"):
-            with st.spinner("Synthesizing Report..."):
-                context = f"Audit Metrics: Intake {q_in}, Face {q_fa}, Pressure {p_st}, Leakage {leak}%"
-                report = avux.get_departmental_insight(context, "Generate remediation plan", "research")
-                st.markdown("### 📋 Mine Status Report")
-                st.write(report)
+        if ppm_intake > 0:
+            recovery_rate = (ppm_return / ppm_intake) * 100
+            leakage = 100 - recovery_rate
+            st.metric("Gas Recovery Rate", f"{recovery_rate:.1f}%", delta=f"{leakage:.1f}% Leakage", delta_color="inverse")
+            
+            if leakage > 20:
+                st.error(f"🚨 HIGH LEAKAGE DETECTED: {leakage:.1f}% gas loss between nodes.")
+                if st.button("Generate Remediation Report"):
+                    # We pass the physics metrics to the AI to write the technical steps
+                    report_context = f"Tracer Audit: {ppm_intake} PPM in, {ppm_return} PPM out. Leakage {leakage}%."
+                    report = avux.get_departmental_insight(report_context, "Write a remediation plan for this gas leakage.", "research")
+                    st.markdown(report)
 
 # --- PERSONA: RESEARCH (DOCS + VISION) ---
 elif persona == "research":
