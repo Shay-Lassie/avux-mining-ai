@@ -101,13 +101,20 @@ if persona == "finance":
         
         if 'finance_pre' in st.session_state:
             st.write("### 📝 Verification Ledger")
-            # Editable table for Human-in-the-loop override
             edt = st.data_editor(pd.DataFrame(st.session_state['finance_pre']), num_rows="dynamic")
+            
             if st.button("✅ Commit Verified Records"):
-                res = avux.save_to_ledger(edt.to_dict('records'))
-                st.success(res)
-                del st.session_state['finance_pre']
-                st.rerun()
+                with st.spinner("Transmitting..."):
+                    res = avux.save_to_ledger(edt.to_dict('records'))
+                    
+                    if "✅" in res:
+                        st.success(res)
+                        del st.session_state['finance_pre']
+                        st.rerun() # Only rerun on success
+                    else:
+                        # On error, we show the message and STOP so you can read it
+                        st.error(res)
+                        st.warning("Check your Terminal for the detailed Database Error log.")
 
     with t2:
         if history and len(history) > 0:
