@@ -25,31 +25,46 @@ class AvuxProcessor:
         return text
 
     def ingest_document(self, pdf_path):
-        """Auto-detects signal quality and extracts data using the Universal Schema."""
         text = self.extract_text_from_pdf(pdf_path)
         if len(text.strip()) < 100 or "camscanner" in text.lower():
             return self._extract_via_vision(pdf_path)
         
-        discovery_prompt = "Identify: 1. Doc Type (PO/DN), 2. Product, 3. UoM (sqm/units). Return JSON: {\"type\": \"\", \"product\": \"\", \"uom\": \"\"}"
+        discovery_prompt = "Identify: 1. Doc Type (PO/DN), 2. Product, 3. UoM (sqm/units). Return ONLY JSON: {\"type\": \"\", \"product\": \"\", \"uom\": \"\"}"
         profile = self._call_llm(discovery_prompt, text[:2000], "llama-3.3-70b-versatile")
         
         if not isinstance(profile, dict): 
-            profile = {"type": "Document", "product": "Industrial Item", "uom": "units"}
+            profile = {"type": "Document", "product": "Item", "uom": "units"}
         
-        # UNIVERSAL EXTRACTION (Ensuring keys match DB columns)
+        # We explicitly tell the AI to use the keys that match our SQL columns
         extract_prompt = f"""
         Extract data from this {profile.get('type')} into a JSON LIST.
-        Schema: [{{
-            "customer": "Name",
-            "product_name": "{profile.get('product')}",
-            "quantity": 0.0,
-            "uom": "{profile.get('uom')}",
-            "status": "Processed",
-            "document_ref": "ID Number"
-        }}]
+        USE THESE EXACT KEYS: "customer", "product_name", "quantity", "uom", "status", "document_ref"
+        Value for product_name: {profile.get('product')}
+        Value for uom: {profile.get('uom')}
+        STRICT: quantity must be a number only.
         """
         return self._call_llm(extract_prompt, text, "llama-3.3-70b-versatile")
 
+    def save_to_ledger(self, data_list):
+        """Standardizes and commits data to Supabase."""
+        try:
+            # CLEANING SIGNAL: Ensure 'quantity' is a float to match SQL float8
+            for row in data_list:
+                try:
+                    row['quantity'] = float(row.get('quantity', 0))
+                except:
+                    row['quantity'] = 0.0
+            
+            # TRANSMIT
+            res = self.supabase.table("universal_ledger").insert(data_list).execute()
+            
+            # LOG TO TERMINAL (For your eyes only)
+            print(f"DEBUG: Successfully inserted {len(data_list)} rows.")
+            return "✅ Transmission Successful."
+        except Exception as e:
+            print(f"DATABASE ERROR: {str(e)}") # Check your terminal!
+            return f"❌ Bus Error: {str(e)}"
+        
     def _extract_via_vision(self, pdf_path):
         """Vision extraction for Scanned PDFs."""
         images = convert_from_path(pdf_path)
@@ -91,13 +106,6 @@ class AvuxProcessor:
             temperature=0.0
         )
         return completion.choices[0].message.content
-
-    def save_to_ledger(self, data_list):
-        try:
-            # Ensure the table name matches your migration ('universal_ledger')
-            self.supabase.table("universal_ledger").insert(data_list).execute()
-            return "✅ Transmission Successful."
-        except Exception as e: return f"❌ Bus Error: {str(e)}"
 
     def get_ledger_history(self):
         try:
