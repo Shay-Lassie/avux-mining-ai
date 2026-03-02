@@ -5,208 +5,110 @@ from core import AvuxProcessor
 from PIL import Image
 import os
 
-# ==========================================
-# 1. SYSTEM BOOT & CONFIGURATION
-# ==========================================
+# --- 1. BOOT SEQUENCE (Mandatory First) ---
 st.set_page_config(page_title="Avux Smart Intranet", layout="wide", page_icon="⚒️")
+
+@st.cache_resource
+def get_engine():
+    return AvuxProcessor()
+
+avux = get_engine()
 
 def load_css(file_path):
     if os.path.exists(file_path):
         with open(file_path) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Inject Avux Brand Identity
 load_css("assets/style.css")
 
-# Initialize the Processor (The PLC)
-try:
-   # --- 1. BOOT SEQUENCE WITH CACHING ---
-    @st.cache_resource # This tells Streamlit: 'Initialize this once and keep it in memory'
-    def get_avux_engine():
-        return AvuxProcessor()
-
-except Exception as e:
-    st.error(f"Hardware Link Fault: {e}")
-    st.stop()
-
-# ==========================================
-# 2. SIDEBAR: AUTHENTICATION & NAVIGATION
-# ==========================================
+# --- 2. SIDEBAR & AUTH ---
 with st.sidebar:
-    # Branding Logo
-    if os.path.exists("assets/Logo1.png"):
-        st.image("assets/Logo1.png", width=180)
-    else:
-        st.write("### AVUX")
-    
+    if os.path.exists("assets/Logo4.png"): st.image("assets/Logo4.png", width=180)
     st.divider()
     st.header("🔐 Secure Access")
-    
     if 'user' not in st.session_state:
-        # LOGIN FORM (Input boxes styled dark via CSS)
-        with st.form("login_gate"):
+        with st.form("login"):
             e = st.text_input("Work Email")
             p = st.text_input("Password", type="password")
             if st.form_submit_button("Sign In"):
                 res = avux.login(e, p)
-                if hasattr(res, 'user') and res.user:
+                if hasattr(res, 'user'): 
                     st.session_state['user'] = res.user
                     st.rerun()
-                else:
-                    st.error("Access Denied: Invalid Credentials")
-        
-        # Stop execution here if not logged in (Security Interlock)
+                else: st.error("Access Denied.")
         st.stop()
-    
     else:
-        # LOGGED IN STATE
-        st.write(f"👷 **Operator:** {st.session_state['user'].email}")
-        if st.button("🚪 Sign Out"):
+        st.write(f"👷 {st.session_state['user'].email}")
+        if st.button("🚪 Sign Out"): 
             del st.session_state['user']
             st.rerun()
-        
-        st.divider()
-        st.header("Navigation Hub")
-        persona = st.selectbox("Active Persona", 
-                              ["finance", "auditor", "research", "content", "marketing", "procurement"])
-        
-        with st.expander("👤 Account Settings"):
-            new_p = st.text_input("Update Password", type="password")
-            if st.button("Apply Change"):
-                st.info(avux.update_password(new_p))
+        persona = st.selectbox("Navigation Hub", ["finance", "auditor", "research", "content", "marketing"])
 
-# ==========================================
-# 3. MAIN AREA: PERSONA LOGIC GATES
-# ==========================================
+# --- 3. MAIN AREA ---
 st.title("⚒️ Avux: Research & Operations Ledger")
 
-# --- PERSONA: FINANCE (UNIVERSAL LEDGER) ---
 if persona == "finance":
     st.subheader("🏦 Universal Operations Ledger")
-    
-    # Pre-fetch Historian Data for Dashboard
-    history = avux.get_ledger_history()
+    # Cache DB calls to improve speed
+    @st.cache_data(ttl=600)
+    def fetch_data(): return avux.get_ledger_history()
+    history = fetch_data()
     
     t1, t2 = st.tabs(["📥 Ingest Data", "📊 Dashboard & Inquiry"])
-    
     with t1:
-        st.info("Upload a PO or DN. The system will auto-detect Product and Units.")
-        f = st.file_uploader("Upload PDF", type="pdf", key="fin_up")
+        f = st.file_uploader("Upload Delivery Note / PO", type="pdf")
         if f:
-            with open("tmp_fin.pdf", "wb") as tmp:
-                tmp.write(f.getbuffer())
+            with open("tmp.pdf","wb") as tmp: tmp.write(f.getbuffer())
             if st.button("🔍 Run Avux Extraction"):
-                with st.spinner("Analyzing Signal..."):
-                    recs = avux.ingest_document("tmp_fin.pdf")
-                    if isinstance(recs, list):
-                        st.session_state['finance_pre'] = recs
-                    else:
-                        st.error(f"Signal Fault: {recs}")
+                with st.spinner("Analyzing..."):
+                    recs = avux.ingest_document("tmp.pdf")
+                    if isinstance(recs, list): st.session_state['pre'] = recs
         
-        if 'finance_pre' in st.session_state:
-            st.write("### 📝 Verification Ledger")
-            edt = st.data_editor(pd.DataFrame(st.session_state['finance_pre']), num_rows="dynamic")
-            
+        if 'pre' in st.session_state:
+            edt = st.data_editor(pd.DataFrame(st.session_state['pre']), num_rows="dynamic")
             if st.button("✅ Commit Verified Records"):
-                with st.spinner("Transmitting..."):
-                    res = avux.save_to_ledger(edt.to_dict('records'))
-                    
-                    if "✅" in res:
-                        st.success(res)
-                        del st.session_state['finance_pre']
-                        st.rerun() # Only rerun on success
-                    else:
-                        # On error, we show the message and STOP so you can read it
-                        st.error(res)
-                        st.warning("Check your Terminal for the detailed Database Error log.")
+                res = avux.save_to_ledger(edt.to_dict('records'))
+                if "✅" in res:
+                    st.success(res)
+                    st.cache_data.clear() # Clear cache so chart updates
+                    del st.session_state['pre']
+                    st.rerun()
+                else: st.error(res)
 
     with t2:
-        if history and len(history) > 0:
+        if history:
             df = pd.DataFrame(history)
-            
-            # KPI Metrics
-            k1, k2, k3 = st.columns(3)
-            k1.metric("Total Thruput", f"{df['quantity'].sum():,.0f}")
-            k2.metric("Total Records", len(df))
-            k3.metric("System Status", "Online")
-
-            st.divider()
-            
-            # Professional Plotly Chart
+            k1, k2 = st.columns(2)
+            k1.metric("Total Volume", f"{df['quantity'].sum():,.0f}")
+            k2.metric("System Health", "Operational")
             fig = px.bar(df, x="product_name", y="quantity", color="status", barmode="group",
-                         title="Product Fulfillment Summary",
-                         color_discrete_map={"Delivered": "#84BD00", "Ordered": "#0072CE", "Processed": "#545454"})
+                         color_discrete_map={"Delivered":"#84BD00","Ordered":"#0072CE"})
             st.plotly_chart(fig, use_container_width=True)
-            
-            st.divider()
-            q = st.text_input("💬 Ask the Historian (NL2SQL):")
-            if q:
-                st.markdown(avux.query_ledger_history(q))
-        else:
-            st.warning("📭 Historian is empty. Ingest data to view analytics.")
+            q = st.text_input("💬 Ask the Historian:")
+            if q: st.markdown(avux.query_ledger_history(q))
+        else: st.warning("Historian is empty.")
 
-# --- PERSONA: AUDITOR (VENTILATION SPECIALIST) ---
 elif persona == "auditor":
     st.subheader("🔦 Ventilation Audit Portal")
-    
-    # Mode Toggle: Airflow vs Tracer Gas
-    audit_mode = st.radio("Select Audit Method", ["Volumetric Airflow", "Tracer Gas Concentration"])
+    col1, col2 = st.columns(2)
+    q_in = col1.number_input("Injected PPM", 0.0)
+    q_fa = col2.number_input("Detected PPM", 0.0)
+    if q_in > 0:
+        leak = 100 - ((q_fa / q_in) * 100)
+        st.metric("Leakage Rate", f"{leak:.1f}%", delta=f"{leak:.1f}%", delta_color="inverse")
+        if st.button("Generate Remediation Report"):
+            st.write(avux.get_departmental_insight(f"Leak:{leak}%", "Write remediation plan", "research"))
 
-    if audit_mode == "Tracer Gas Concentration":
-        st.info("📊 Input Peak PPM from Gas Detector Nodes")
-        col1, col2 = st.columns(2)
-        ppm_intake = col1.number_input("Injected Concentration (PPM)", 1000, 10000, 5000)
-        ppm_return = col2.number_input("Detected at Return Point (PPM)", 0, 10000, 3500)
-        
-        if ppm_intake > 0:
-            recovery_rate = (ppm_return / ppm_intake) * 100
-            leakage = 100 - recovery_rate
-            st.metric("Gas Recovery Rate", f"{recovery_rate:.1f}%", delta=f"{leakage:.1f}% Leakage", delta_color="inverse")
-            
-            if leakage > 20:
-                st.error(f"🚨 HIGH LEAKAGE DETECTED: {leakage:.1f}% gas loss between nodes.")
-                if st.button("Generate Remediation Report"):
-                    # We pass the physics metrics to the AI to write the technical steps
-                    report_context = f"Tracer Audit: {ppm_intake} PPM in, {ppm_return} PPM out. Leakage {leakage}%."
-                    report = avux.get_departmental_insight(report_context, "Write a remediation plan for this gas leakage.", "research")
-                    st.markdown(report)
-
-# --- PERSONA: RESEARCH (DOCS + VISION) ---
 elif persona == "research":
-    st.subheader("🔬 R&D Intelligence")
-    t_doc, t_vis = st.tabs(["📄 Document Analysis", "📸 Equipment Inspection"])
-    
+    t_doc, t_vis = st.tabs(["📄 Doc Analysis", "📸 Equipment Inspection"])
     with t_doc:
-        doc = st.file_uploader("Upload Tech Specs", type="pdf")
+        doc = st.file_uploader("Upload Specs")
         if doc:
             q = st.text_input("Ask about technical constraints:")
             if q: st.write(avux.get_departmental_insight(avux.extract_text_from_pdf(doc), q, "research"))
-            
     with t_vis:
-        img = st.file_uploader("Upload Field Photo", type=['jpg', 'jpeg', 'png'])
+        img = st.file_uploader("Upload Photo", type=['jpg','png','jpeg'])
         if img:
-            st.image(img, width=400, caption="Equipment Source Signal")
-            if st.button("🚀 Run Visual Fault Detection"):
-                with st.spinner("Analyzing physical state..."):
-                    st.write(avux.inspect_equipment(img.getvalue()))
-
-# --- PERSONA: CONTENT (SYNTHESIS) ---
-elif persona == "content":
-    st.subheader("📑 Content Synthesis Engine")
-    c1, c2 = st.columns(2)
-    s = c1.file_uploader("New Specs PDF")
-    t = c2.file_uploader("Reference Template PDF")
-    if s and t:
-        prompt = st.text_area("What should Avux generate?")
-        if st.button("🚀 Synthesize"):
-            res = avux.get_departmental_insight(f"SPECS: {avux.extract_text_from_pdf(s)} TEMP: {avux.extract_text_from_pdf(t)}", prompt, "content")
-            st.write(res)
-
-# --- DEFAULT CASE (Marketing/Procurement) ---
-else:
-    st.subheader(f"🔍 {persona.title()} Analysis")
-    gen_doc = st.file_uploader(f"Upload document for {persona}")
-    if gen_doc:
-        gen_q = st.text_input(f"Question for {persona}:")
-        if gen_q:
-            st.write(avux.get_departmental_insight(avux.extract_text_from_pdf(gen_doc), gen_q, persona))
+            st.image(img, width=400)
+            if st.button("🚀 Inspect"):
+                st.write(avux.inspect_equipment(img.getvalue()))
